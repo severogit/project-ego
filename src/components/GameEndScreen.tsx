@@ -1,41 +1,35 @@
 import { Link } from 'react-router-dom'
+import type { MatchPhase } from '../types/game'
 import type { MatchResult } from '../types/match'
 import type { Player } from '../types/player'
+import { MATCH_PHASE_LABELS } from '../utils/gameFlow'
 import MatchResultPanel from './MatchResultPanel'
 import PlayerImage from './PlayerImage'
 
 interface GameEndScreenProps {
-  status: 'team-complete' | 'game-over'
   team: Player[]
   result: MatchResult | null
+  eliminatedAt: MatchPhase
   onRestart: () => void
 }
 
 function GameEndScreen({
-  status,
   team,
   result,
+  eliminatedAt,
   onRestart,
 }: GameEndScreenProps) {
-  const isComplete = status === 'team-complete'
-
   return (
     <section className="relative z-10 mx-auto w-full max-w-5xl">
       <header className="text-center">
-        <span
-          className={`text-xs font-bold uppercase tracking-[0.3em] ${
-            isComplete ? 'text-emerald-400' : 'text-rose-400'
-          }`}
-        >
-          {isComplete ? 'Objetivo alcançado' : 'Derrota'}
+        <span className="text-xs font-bold uppercase tracking-[0.3em] text-rose-400">
+          Eliminado em {MATCH_PHASE_LABELS[eliminatedAt]}
         </span>
         <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tight sm:text-6xl">
-          {isComplete ? 'Time completo' : 'Projeto encerrado'}
+          Projeto encerrado
         </h1>
         <p className="mt-4 text-zinc-400">
-          {isComplete
-            ? 'Seu time de cinco jogadores está formado.'
-            : 'Seu ego não sobreviveu a esta seleção.'}
+          Seu ego não sobreviveu a esta fase.
         </p>
       </header>
 
