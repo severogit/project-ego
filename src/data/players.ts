@@ -13,6 +13,12 @@ export const players: Player[] = [
     dribble: 84,
     defense: 72,
     ego: 99,
+    flowRate: 18,
+    trait: {
+      name: 'Meta Vision',
+      description: 'Participa mais das jogadas e aumenta chance de assistencia.',
+    },
+    archetypes: ['Visionary', 'Playmaker'],
   },
   {
     id: 2,
@@ -26,6 +32,12 @@ export const players: Player[] = [
     dribble: 97,
     defense: 58,
     ego: 90,
+    flowRate: 17,
+    trait: {
+      name: 'Monster Dribble',
+      description: 'Inicia mais jogadas ofensivas com dribles.',
+    },
+    archetypes: ['Dribbler', 'Creator'],
   },
   {
     id: 3,
@@ -39,6 +51,8 @@ export const players: Player[] = [
     dribble: 89,
     defense: 62,
     ego: 88,
+    flowRate: 14,
+    archetypes: ['Sprinter'],
   },
   {
     id: 4,
@@ -52,6 +66,7 @@ export const players: Player[] = [
     dribble: 74,
     defense: 76,
     ego: 86,
+    flowRate: 13,
   },
   {
     id: 5,
@@ -65,6 +80,12 @@ export const players: Player[] = [
     dribble: 96,
     defense: 60,
     ego: 89,
+    flowRate: 16,
+    trait: {
+      name: 'First Touch Genius',
+      description: 'Converte melhor finalizacoes dificeis.',
+    },
+    archetypes: ['Finisher', 'Technician'],
   },
   {
     id: 6,
@@ -78,6 +99,7 @@ export const players: Player[] = [
     dribble: 89,
     defense: 84,
     ego: 87,
+    flowRate: 12,
   },
   {
     id: 7,
@@ -91,6 +113,12 @@ export const players: Player[] = [
     dribble: 91,
     defense: 70,
     ego: 98,
+    flowRate: 19,
+    trait: {
+      name: 'The King',
+      description: 'Chuta mais e tenta resolver sozinho.',
+    },
+    archetypes: ['Finisher', 'Egoist'],
   },
   {
     id: 8,
@@ -104,6 +132,12 @@ export const players: Player[] = [
     dribble: 95,
     defense: 84,
     ego: 99,
+    flowRate: 22,
+    trait: {
+      name: 'Destroyer',
+      description: 'Ataca e defende em alto nivel.',
+    },
+    archetypes: ['Finisher', 'Genius'],
   },
   {
     id: 9,
@@ -117,6 +151,12 @@ export const players: Player[] = [
     dribble: 88,
     defense: 54,
     ego: 99,
+    flowRate: 20,
+    trait: {
+      name: 'Demon Striker',
+      description: 'Finaliza com mais frequencia, mas quase nunca da assistencias.',
+    },
+    archetypes: ['Finisher', 'Egoist'],
   },
   {
     id: 10,
@@ -130,6 +170,7 @@ export const players: Player[] = [
     dribble: 74,
     defense: 90,
     ego: 82,
+    flowRate: 7,
   },
   {
     id: 11,
@@ -143,6 +184,7 @@ export const players: Player[] = [
     dribble: 72,
     defense: 88,
     ego: 70,
+    flowRate: 6,
   },
   {
     id: 12,
@@ -156,6 +198,7 @@ export const players: Player[] = [
     dribble: 88,
     defense: 86,
     ego: 86,
+    flowRate: 11,
   },
   {
     id: 13,
@@ -169,6 +212,7 @@ export const players: Player[] = [
     dribble: 87,
     defense: 65,
     ego: 84,
+    flowRate: 11,
   },
   {
     id: 14,
@@ -182,6 +226,7 @@ export const players: Player[] = [
     dribble: 94,
     defense: 68,
     ego: 91,
+    flowRate: 14,
   },
   {
     id: 15,
@@ -195,6 +240,12 @@ export const players: Player[] = [
     dribble: 87,
     defense: 70,
     ego: 83,
+    flowRate: 10,
+    trait: {
+      name: 'Perfect Pass',
+      description: 'Aumenta a chance de assistencia.',
+    },
+    archetypes: ['Playmaker', 'Visionary'],
   },
   {
     id: 16,
@@ -208,6 +259,7 @@ export const players: Player[] = [
     dribble: 86,
     defense: 77,
     ego: 78,
+    flowRate: 8,
   },
   {
     id: 17,
@@ -221,6 +273,12 @@ export const players: Player[] = [
     dribble: 68,
     defense: 94,
     ego: 84,
+    flowRate: 8,
+    trait: {
+      name: 'Wild Reflexes',
+      description: 'Aumenta acoes defensivas.',
+    },
+    archetypes: ['Defender', 'Reactive'],
   },
   {
     id: 18,
@@ -234,6 +292,12 @@ export const players: Player[] = [
     dribble: 97,
     defense: 82,
     ego: 96,
+    flowRate: 18,
+    trait: {
+      name: 'World Class Passer',
+      description: 'Gera muitas assistencias e melhora finalizadores.',
+    },
+    archetypes: ['Playmaker', 'Genius'],
   },
   {
     id: 19,
@@ -247,6 +311,12 @@ export const players: Player[] = [
     dribble: 95,
     defense: 69,
     ego: 100,
+    flowRate: 21,
+    trait: {
+      name: 'Kaiser Impact',
+      description: 'Tem maior chance de converter finalizacoes.',
+    },
+    archetypes: ['Finisher', 'Star'],
   },
   {
     id: 20,
@@ -260,5 +330,30 @@ export const players: Player[] = [
     dribble: 95,
     defense: 67,
     ego: 85,
+    flowRate: 12,
+    trait: {
+      name: 'Obsessive Support',
+      description: 'Aumenta criacao de jogadas para finalizadores.',
+    },
+    archetypes: ['Playmaker', 'Support'],
+  },
+  {
+    id: 21,
+    name: 'Oliver Aiku',
+    position: 'Center Back',
+    rarity: 'Legendary',
+    image: '/players/oliver-aiku.png',
+    attack: 78,
+    speed: 84,
+    vision: 88,
+    dribble: 80,
+    defense: 97,
+    ego: 90,
+    flowRate: 15,
+    trait: {
+      name: 'Last Wall',
+      description: 'Aumenta bloqueios e acoes defensivas.',
+    },
+    archetypes: ['Defender', 'Leader'],
   },
 ]

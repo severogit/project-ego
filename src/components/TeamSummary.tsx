@@ -6,13 +6,15 @@ import {
   calculateTeamPower,
   playerAttributes,
 } from '../utils/draft'
+import { MATCH_PHASE_LABELS } from '../utils/gameFlow'
 import PlayerImage from './PlayerImage'
+import SynergyPanel from './SynergyPanel'
 
 interface TeamSummaryProps {
   team: Player[]
   rivalTeam: Player[]
   phase: MatchPhase
-  onSimulate: () => void
+  onStartMatch: () => void
 }
 
 const attributeLabels = {
@@ -28,20 +30,21 @@ function TeamSummary({
   team,
   rivalTeam,
   phase,
-  onSimulate,
+  onStartMatch,
 }: TeamSummaryProps) {
   const teamPower = calculateTeamPower(team)
   const averages = calculateAttributeAverages(team)
-  const matchLabel = phase === 'match-3v3' ? '3x3' : '4x4'
+  const matchLabel = MATCH_PHASE_LABELS[phase]
+  const isKnockout = phase.startsWith('knockout-')
 
   return (
     <section className="relative z-10 mx-auto w-full max-w-6xl">
       <header className="text-center">
         <span className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400">
-          Próximo desafio
+          {isKnockout ? 'Mata-mata' : 'Próximo desafio'}
         </span>
         <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tight sm:text-6xl">
-          Partida {matchLabel}
+          {isKnockout ? matchLabel : `Partida ${matchLabel}`}
         </h1>
         <p className="mt-4 text-zinc-400">
           Analise os dois times e simule esta partida.
@@ -76,6 +79,9 @@ function TeamSummary({
               </article>
             ))}
           </div>
+          <div className="mt-5 border-t border-white/10 pt-5">
+            <SynergyPanel team={team} title="Sinergias do seu time" />
+          </div>
         </section>
 
         <section>
@@ -104,6 +110,9 @@ function TeamSummary({
                 </div>
               </article>
             ))}
+          </div>
+          <div className="mt-5 border-t border-white/10 pt-5">
+            <SynergyPanel team={rivalTeam} title="Sinergias do rival" />
           </div>
         </section>
       </div>
@@ -140,10 +149,10 @@ function TeamSummary({
       <div className="mt-8 flex justify-center">
         <button
           type="button"
-          onClick={onSimulate}
+          onClick={onStartMatch}
           className="bg-emerald-600 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-400"
         >
-          Simular partida {matchLabel}
+          Iniciar {isKnockout ? matchLabel : `partida ${matchLabel}`}
         </button>
       </div>
     </section>

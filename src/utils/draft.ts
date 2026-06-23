@@ -11,13 +11,17 @@ export const playerAttributes = [
 
 export type PlayerAttribute = (typeof playerAttributes)[number]
 export type AttributeAverages = Record<PlayerAttribute, number>
+export interface ChoiceImpact {
+  attribute: PlayerAttribute
+  value: number
+}
 
 export const RARITY_WEIGHTS: Record<Rarity, number> = {
-  Common: 50,
+  Common: 45,
   Rare: 25,
-  Epic: 15,
-  Legendary: 8,
-  Egoist: 2,
+  Epic: 16,
+  Legendary: 10,
+  Egoist: 4,
 }
 
 type RandomGenerator = () => number
@@ -102,6 +106,22 @@ export function calculateTeamPower(team: Player[]): number {
     (total, player) => total + calculatePlayerPower(player),
     0,
   )
+}
+
+export function calculateChoiceImpact(
+  team: Player[],
+  player: Player,
+  attributes: readonly PlayerAttribute[] = playerAttributes,
+): ChoiceImpact[] {
+  const teamSizeAfterSelection = Math.max(1, team.length + 1)
+
+  return attributes.map((attribute) => ({
+    attribute,
+    value: Math.max(
+      1,
+      Math.round(player[attribute] / teamSizeAfterSelection),
+    ),
+  }))
 }
 
 export function calculateAttributeAverages(

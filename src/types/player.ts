@@ -16,5 +16,11 @@ export interface Player {
   dribble: number
   defense: number
   ego: number
+  flowRate: number
+  trait?: {
+    name: string
+    description: string
+  }
+  archetypes?: string[]
   image?: string
 }

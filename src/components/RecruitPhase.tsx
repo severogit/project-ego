@@ -2,6 +2,7 @@ import type { MatchResult } from '../types/match'
 import type { Player } from '../types/player'
 import MatchResultPanel from './MatchResultPanel'
 import PlayerCard from './PlayerCard'
+import TeamStatusPanel from './TeamStatusPanel'
 
 interface RecruitPhaseProps {
   result: MatchResult
@@ -33,12 +34,21 @@ function RecruitPhase({
         <MatchResultPanel result={result} />
       </div>
 
+      <div className="mt-8">
+        <TeamStatusPanel
+          team={result.playerTeam}
+          maxTeamSize={nextTeamSize}
+          title="Time antes do recrutamento"
+        />
+      </div>
+
       <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {result.rivalTeam.map((player) => (
           <PlayerCard
             key={player.id}
             player={player}
             onSelect={onRecruit}
+            comparisonTeam={result.playerTeam}
           />
         ))}
       </div>

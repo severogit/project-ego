@@ -1,25 +1,44 @@
 import { useCallback, useRef, useState } from 'react'
+import ChampionScreen from '../components/ChampionScreen'
 import GameEndScreen from '../components/GameEndScreen'
+import LiveMatch from '../components/LiveMatch'
 import PlayerCard from '../components/PlayerCard'
 import RecruitPhase from '../components/RecruitPhase'
 import Roulette from '../components/Roulette'
+import TeamCompleteScreen from '../components/TeamCompleteScreen'
+import TeamStatusPanel from '../components/TeamStatusPanel'
 import TeamSummary from '../components/TeamSummary'
 import { players } from '../data/players'
-import type { GamePhase } from '../types/game'
+import type {
+  CampaignVictory,
+  GamePhase,
+  MatchPhase,
+} from '../types/game'
 import type { MatchResult } from '../types/match'
 import type { Player } from '../types/player'
-import { drawWeightedPlayers } from '../utils/draft'
+import { calculateTeamPower, drawWeightedPlayers } from '../utils/draft'
 import {
   getPhaseAfterMatch,
   getPhaseAfterRecruit,
 } from '../utils/gameFlow'
-import { simulateMatch } from '../utils/match'
+import { generateKnockoutRival } from '../utils/knockout'
 
 const INITIAL_TEAM_SIZE = 3
 const OPTIONS_PER_ROUND = 3
 
+function isMatchPhase(phase: GamePhase): phase is MatchPhase {
+  return (
+    phase === 'match-3v3' ||
+    phase === 'match-4v4' ||
+    phase === 'knockout-quarter' ||
+    phase === 'knockout-semi' ||
+    phase === 'knockout-final'
+  )
+}
+
 function DraftPage() {
   const matchLockedRef = useRef(false)
+  const recruitLockedRef = useRef(false)
   const [phase, setPhase] = useState<GamePhase>('draft')
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([])
   const [currentOptions, setCurrentOptions] = useState<Player[]>(() =>
@@ -29,7 +48,13 @@ function DraftPage() {
   const [currentRound, setCurrentRound] = useState(1)
   const [rivalTeam, setRivalTeam] = useState<Player[]>([])
   const [usedRivalPlayerIds, setUsedRivalPlayerIds] = useState<number[]>([])
+  const [knockoutRivalSignatures, setKnockoutRivalSignatures] = useState<
+    string[]
+  >([])
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
+  const [isMatchRunning, setIsMatchRunning] = useState(false)
+  const [eliminatedAt, setEliminatedAt] = useState<MatchPhase | null>(null)
+  const [campaign, setCampaign] = useState<CampaignVictory[]>([])
 
   const selectedPlayerIds = selectedPlayers.map((player) => player.id)
   const availablePlayers = players.filter(
@@ -78,23 +103,69 @@ function DraftPage() {
     setPhase('match-3v3')
   }
 
-  function handleSimulateMatch() {
-    if (
-      matchLockedRef.current ||
-      (phase !== 'match-3v3' && phase !== 'match-4v4')
-    ) {
+  function handleStartMatch() {
+    if (matchLockedRef.current || !isMatchPhase(phase)) {
       return
     }
 
     matchLockedRef.current = true
-    const result = simulateMatch(selectedPlayers, rivalTeam)
+    setIsMatchRunning(true)
+  }
 
+  function handleMatchComplete(result: MatchResult) {
+    if (!isMatchPhase(phase) || !isMatchRunning) {
+      return
+    }
+
+    setIsMatchRunning(false)
     setMatchResult(result)
-    setPhase(getPhaseAfterMatch(phase, result.winner))
+
+    if (result.winner === 'rival') {
+      setEliminatedAt(phase)
+      setPhase('game-over')
+      return
+    }
+
+    setCampaign((currentCampaign) => [...currentCampaign, phase])
+    const nextPhase = getPhaseAfterMatch(phase, result.winner)
+
+    if (
+      nextPhase === 'knockout-semi' ||
+      nextPhase === 'knockout-final'
+    ) {
+      const nextRival = generateKnockoutRival(
+        players,
+        selectedPlayers,
+        nextPhase,
+        calculateTeamPower(rivalTeam),
+        knockoutRivalSignatures,
+      )
+
+      setRivalTeam(nextRival.team)
+      setKnockoutRivalSignatures((currentSignatures) => [
+        ...currentSignatures,
+        nextRival.signature,
+      ])
+      setMatchResult(null)
+      setIsMatchRunning(false)
+      matchLockedRef.current = false
+      setPhase(nextPhase)
+      return
+    }
+
+    if (
+      nextPhase === 'recruit-after-3v3' ||
+      nextPhase === 'recruit-after-4v4'
+    ) {
+      recruitLockedRef.current = false
+    }
+
+    setPhase(nextPhase)
   }
 
   function handleRecruitPlayer(player: Player) {
     if (
+      recruitLockedRef.current ||
       (phase !== 'recruit-after-3v3' &&
         phase !== 'recruit-after-4v4') ||
       !rivalTeam.some((rivalPlayer) => rivalPlayer.id === player.id) ||
@@ -105,6 +176,7 @@ function DraftPage() {
       return
     }
 
+    recruitLockedRef.current = true
     const updatedTeam = [...selectedPlayers, player]
     const nextPhase = getPhaseAfterRecruit(phase)
 
@@ -112,6 +184,7 @@ function DraftPage() {
 
     if (nextPhase === 'team-complete') {
       setRivalTeam([])
+      setMatchResult(null)
       setPhase(nextPhase)
       return
     }
@@ -131,12 +204,33 @@ function DraftPage() {
       ...nextRival.map((rivalPlayer) => rivalPlayer.id),
     ])
     setMatchResult(null)
+    setIsMatchRunning(false)
     matchLockedRef.current = false
     setPhase(nextPhase)
   }
 
+  function handleEnterKnockout() {
+    if (phase !== 'team-complete') {
+      return
+    }
+
+    const quarterRival = generateKnockoutRival(
+      players,
+      selectedPlayers,
+      'knockout-quarter',
+    )
+
+    setRivalTeam(quarterRival.team)
+    setKnockoutRivalSignatures([quarterRival.signature])
+    setMatchResult(null)
+    setIsMatchRunning(false)
+    matchLockedRef.current = false
+    setPhase('knockout-quarter')
+  }
+
   function handleRestart() {
     matchLockedRef.current = false
+    recruitLockedRef.current = false
     setPhase('draft')
     setSelectedPlayers([])
     setCurrentOptions(drawWeightedPlayers(players, OPTIONS_PER_ROUND))
@@ -144,7 +238,11 @@ function DraftPage() {
     setIsRolling(true)
     setRivalTeam([])
     setUsedRivalPlayerIds([])
+    setKnockoutRivalSignatures([])
     setMatchResult(null)
+    setIsMatchRunning(false)
+    setEliminatedAt(null)
+    setCampaign([])
   }
 
   function renderDraft() {
@@ -162,7 +260,15 @@ function DraftPage() {
           </p>
         </header>
 
-        <div className="mt-8 flex min-h-16 flex-wrap items-center justify-center gap-3">
+        <div className="mt-8">
+          <TeamStatusPanel
+            team={selectedPlayers}
+            maxTeamSize={INITIAL_TEAM_SIZE}
+            title="Seu draft"
+          />
+        </div>
+
+        <div className="mt-5 flex min-h-16 flex-wrap items-center justify-center gap-3">
           {selectedPlayers.length > 0 ? (
             selectedPlayers.map((player, index) => (
               <div
@@ -198,6 +304,7 @@ function DraftPage() {
                   key={player.id}
                   player={player}
                   onSelect={handlePlayerSelect}
+                  comparisonTeam={selectedPlayers}
                 />
               ))}
             </div>
@@ -216,13 +323,25 @@ function DraftPage() {
       return renderDraft()
     }
 
-    if (phase === 'match-3v3' || phase === 'match-4v4') {
+    if (isMatchPhase(phase)) {
+      if (isMatchRunning) {
+        return (
+          <LiveMatch
+            key={phase}
+            playerTeam={selectedPlayers}
+            rivalTeam={rivalTeam}
+            phase={phase}
+            onComplete={handleMatchComplete}
+          />
+        )
+      }
+
       return (
         <TeamSummary
           team={selectedPlayers}
           rivalTeam={rivalTeam}
           phase={phase}
-          onSimulate={handleSimulateMatch}
+          onStartMatch={handleStartMatch}
         />
       )
     }
@@ -241,12 +360,31 @@ function DraftPage() {
       )
     }
 
-    if (phase === 'team-complete' || phase === 'game-over') {
+    if (phase === 'team-complete') {
+      return (
+        <TeamCompleteScreen
+          team={selectedPlayers}
+          onEnterKnockout={handleEnterKnockout}
+        />
+      )
+    }
+
+    if (phase === 'champion') {
+      return (
+        <ChampionScreen
+          team={selectedPlayers}
+          campaign={campaign}
+          onRestart={handleRestart}
+        />
+      )
+    }
+
+    if (phase === 'game-over' && eliminatedAt) {
       return (
         <GameEndScreen
-          status={phase}
           team={selectedPlayers}
           result={matchResult}
+          eliminatedAt={eliminatedAt}
           onRestart={handleRestart}
         />
       )

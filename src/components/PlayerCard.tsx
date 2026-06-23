@@ -1,30 +1,69 @@
-import type { Player, Rarity } from "../types/player";
-import { calculatePlayerPower, playerAttributes } from "../utils/draft";
-import PlayerImage from "./PlayerImage";
+import type { Player, Rarity } from '../types/player'
+import {
+  calculateChoiceImpact,
+  calculatePlayerPower,
+  playerAttributes,
+  type PlayerAttribute,
+} from '../utils/draft'
+import PlayerImage from './PlayerImage'
 
 interface PlayerCardProps {
-  player: Player;
-  onSelect: (player: Player) => void;
+  player: Player
+  onSelect: (player: Player) => void
+  comparisonTeam?: Player[]
 }
 
 const rarityStyles: Record<Rarity, string> = {
-  Common: "border-zinc-600 bg-zinc-500/10 text-zinc-300",
-  Rare: "border-blue-500 bg-blue-500/10 text-blue-300",
-  Epic: "border-violet-500 bg-violet-500/10 text-violet-300",
-  Legendary: "border-amber-400 bg-amber-400/10 text-amber-300",
-  Egoist: "border-rose-500 bg-rose-500/10 text-rose-300",
-};
+  Common: 'border-zinc-600 bg-zinc-500/10 text-zinc-300',
+  Rare: 'border-blue-500 bg-blue-500/10 text-blue-300',
+  Epic: 'border-violet-500 bg-violet-500/10 text-violet-300',
+  Legendary: 'border-amber-400 bg-amber-400/10 text-amber-300',
+  Egoist: 'border-rose-500 bg-rose-500/10 text-rose-300',
+}
 
-const attributeLabels = {
-  attack: "Ataque",
-  speed: "Velocidade",
-  vision: "Visão",
-  dribble: "Drible",
-  defense: "Defesa",
-  ego: "Ego",
-};
+const attributeLabels: Record<PlayerAttribute, string> = {
+  attack: 'Ataque',
+  speed: 'Velocidade',
+  vision: 'Visao',
+  dribble: 'Drible',
+  defense: 'Defesa',
+  ego: 'Ego',
+}
 
-function PlayerCard({ player, onSelect }: PlayerCardProps) {
+const impactAttributes: PlayerAttribute[] = ['attack', 'vision', 'defense']
+
+function getChoiceImpact(team: Player[] | undefined, player: Player) {
+  if (!team || team.length === 0) {
+    return []
+  }
+
+  return calculateChoiceImpact(team, player, impactAttributes).map(
+    (impact) => ({
+      ...impact,
+      label: attributeLabels[impact.attribute],
+    }),
+  )
+}
+
+function formatImpact(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`
+}
+
+function getImpactTone(value: number): string {
+  if (value > 0) {
+    return 'text-emerald-300'
+  }
+
+  return 'text-zinc-500'
+}
+
+function PlayerCard({
+  player,
+  onSelect,
+  comparisonTeam,
+}: PlayerCardProps) {
+  const choiceImpact = getChoiceImpact(comparisonTeam, player)
+
   return (
     <button
       type="button"
@@ -58,6 +97,33 @@ function PlayerCard({ player, onSelect }: PlayerCardProps) {
           {player.name}
         </h2>
 
+        {(player.trait || player.archetypes?.length) && (
+          <div className="mt-4 border border-white/10 bg-black/25 p-3">
+            {player.trait && (
+              <>
+                <p className="text-xs font-black uppercase tracking-wider text-amber-300">
+                  {player.trait.name}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                  {player.trait.description}
+                </p>
+              </>
+            )}
+            {player.archetypes && player.archetypes.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {player.archetypes.map((archetype) => (
+                  <span
+                    key={archetype}
+                    className="border border-blue-400/25 bg-blue-400/10 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-blue-200"
+                  >
+                    {archetype}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-3">
           {playerAttributes.map((attribute) => (
             <div
@@ -74,6 +140,30 @@ function PlayerCard({ player, onSelect }: PlayerCardProps) {
           ))}
         </dl>
 
+        {choiceImpact.length > 0 && (
+          <div className="mt-5 border border-emerald-400/15 bg-emerald-400/[0.04] p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">
+              Contribuicao ao time
+            </p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {choiceImpact.map((impact) => (
+                <div key={impact.attribute}>
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                    {impact.label}
+                  </p>
+                  <p
+                    className={`mt-1 text-sm font-black ${getImpactTone(
+                      impact.value,
+                    )}`}
+                  >
+                    {formatImpact(impact.value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
           <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
             Poder
@@ -84,7 +174,7 @@ function PlayerCard({ player, onSelect }: PlayerCardProps) {
         </div>
       </div>
     </button>
-  );
+  )
 }
 
-export default PlayerCard;
+export default PlayerCard

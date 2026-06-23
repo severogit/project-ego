@@ -28,3 +28,21 @@ test('recruitment advances once and stops after the five-player team', () => {
   assert.equal(getPhaseAfterRecruit('recruit-after-3v3'), 'match-4v4')
   assert.equal(getPhaseAfterRecruit('recruit-after-4v4'), 'team-complete')
 })
+
+test('knockout victories advance through quarter, semi and final', () => {
+  assert.equal(
+    getPhaseAfterMatch('knockout-quarter', 'player'),
+    'knockout-semi',
+  )
+  assert.equal(
+    getPhaseAfterMatch('knockout-semi', 'player'),
+    'knockout-final',
+  )
+  assert.equal(getPhaseAfterMatch('knockout-final', 'player'), 'champion')
+})
+
+test('a knockout loss ends the project', () => {
+  assert.equal(getPhaseAfterMatch('knockout-quarter', 'rival'), 'game-over')
+  assert.equal(getPhaseAfterMatch('knockout-semi', 'rival'), 'game-over')
+  assert.equal(getPhaseAfterMatch('knockout-final', 'rival'), 'game-over')
+})

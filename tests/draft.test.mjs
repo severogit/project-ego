@@ -3,6 +3,7 @@ import test from 'node:test'
 import { players } from '../src/data/players.ts'
 import {
   RARITY_WEIGHTS,
+  calculateChoiceImpact,
   drawWeightedPlayers,
 } from '../src/utils/draft.ts'
 
@@ -38,6 +39,30 @@ test('weighted draws do not return duplicate or excluded players', () => {
     assert.equal(
       resultIds.some((playerId) => excludedIds.includes(playerId)),
       false,
+    )
+  }
+})
+
+test('choice impact reports positive contribution for displayed attributes', () => {
+  const selectedTeam = players.slice(0, 2)
+  const selectablePlayers = players.slice(2)
+  const displayedAttributes = ['attack', 'vision', 'defense']
+
+  for (const player of selectablePlayers) {
+    const impact = calculateChoiceImpact(
+      selectedTeam,
+      player,
+      displayedAttributes,
+    )
+
+    assert.equal(impact.length, displayedAttributes.length)
+    assert.deepEqual(
+      impact.map(({ attribute }) => attribute),
+      displayedAttributes,
+    )
+    assert.ok(
+      impact.every(({ value }) => value > 0),
+      `${player.name} should add at least one point to every displayed attribute`,
     )
   }
 })
