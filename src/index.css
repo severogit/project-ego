@@ -25,3 +25,33 @@ body {
 #root {
   min-height: 100vh;
 }
+
+.match-scrollbar {
+  scrollbar-color: rgba(59, 130, 246, 0.75) rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
+}
+
+.match-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.match-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.match-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(96, 165, 250, 0.95),
+    rgba(16, 185, 129, 0.85)
+  );
+  border: 2px solid rgba(5, 7, 11, 0.95);
+}
+
+.match-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(147, 197, 253, 1),
+    rgba(52, 211, 153, 0.95)
+  );
+}
