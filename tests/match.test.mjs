@@ -157,6 +157,100 @@ test('dev helper can force FLOW when a player is eligible', () => {
   assert.equal(forcedState.flowActivations, state.flowActivations + 1)
 })
 
+test('dev simulation metrics are initialized for every player', () => {
+  const playerTeam = [createPlayer(1, 80), createPlayer(2, 80)]
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  const state = initializeLiveMatch(playerTeam, rivalTeam, () => 0.99)
+
+  assert.equal(state.stats.every((playerStats) => playerStats.dev), true)
+
+  for (const playerStats of state.stats) {
+    assert.equal(playerStats.dev.offensiveCandidateCount, 0)
+    assert.equal(playerStats.dev.finisherSelectedCount, 0)
+    assert.equal(playerStats.dev.assistantCandidateCount, 0)
+    assert.equal(playerStats.dev.assistantSelectedCount, 0)
+    assert.equal(playerStats.dev.defensiveCandidateCount, 0)
+    assert.equal(playerStats.dev.defensiveSelectedCount, 0)
+    assert.equal(playerStats.dev.totalFinisherWeight, 0)
+    assert.equal(playerStats.dev.totalAssistantWeight, 0)
+    assert.equal(playerStats.dev.totalDefensiveWeight, 0)
+  }
+})
+
+test('dev simulation metrics count selected finishers', () => {
+  const playerTeam = [createPlayer(1, 80), createPlayer(2, 80)]
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch(playerTeam, rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0, 0, 0.99, 0.99]),
+  )
+
+  const selectedFinisher = state.stats.find(
+    (playerStats) =>
+      playerStats.side === 'player' && playerStats.player.id === 1,
+  )
+  const otherCandidate = state.stats.find(
+    (playerStats) =>
+      playerStats.side === 'player' && playerStats.player.id === 2,
+  )
+
+  assert.equal(selectedFinisher?.dev.finisherSelectedCount, 1)
+  assert.equal(selectedFinisher?.dev.offensiveCandidateCount, 1)
+  assert.ok(selectedFinisher?.dev.totalFinisherWeight > 0)
+  assert.equal(otherCandidate?.dev.finisherSelectedCount, 0)
+  assert.equal(otherCandidate?.dev.offensiveCandidateCount, 1)
+})
+
+test('dev simulation metrics count selected assistants', () => {
+  const playerTeam = [createPlayer(1, 80), createPlayer(2, 80)]
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch(playerTeam, rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0, 0, 0, 0.99]),
+  )
+
+  const finisher = state.stats.find(
+    (playerStats) =>
+      playerStats.side === 'player' && playerStats.player.id === 1,
+  )
+  const selectedAssistant = state.stats.find(
+    (playerStats) =>
+      playerStats.side === 'player' && playerStats.player.id === 2,
+  )
+
+  assert.equal(finisher?.dev.assistantCandidateCount, 0)
+  assert.equal(selectedAssistant?.dev.assistantCandidateCount, 1)
+  assert.equal(selectedAssistant?.dev.assistantSelectedCount, 1)
+  assert.ok(selectedAssistant?.dev.totalAssistantWeight > 0)
+})
+
+test('dev simulation metrics count selected defenders', () => {
+  const playerTeam = [createPlayer(1, 80), createPlayer(2, 80)]
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch(playerTeam, rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(state, sequenceRandom([0, 0.99, 0]))
+
+  const selectedDefender = state.stats.find(
+    (playerStats) =>
+      playerStats.side === 'rival' && playerStats.player.id === 3,
+  )
+  const otherCandidate = state.stats.find(
+    (playerStats) =>
+      playerStats.side === 'rival' && playerStats.player.id === 4,
+  )
+
+  assert.equal(selectedDefender?.dev.defensiveSelectedCount, 1)
+  assert.equal(selectedDefender?.dev.defensiveCandidateCount, 1)
+  assert.ok(selectedDefender?.dev.totalDefensiveWeight > 0)
+  assert.equal(otherCandidate?.dev.defensiveSelectedCount, 0)
+  assert.equal(otherCandidate?.dev.defensiveCandidateCount, 1)
+})
+
 test('Demon Striker can select Shidou and convert a borderline finish', () => {
   const shidou = createNamedTraitPlayer(
     1,

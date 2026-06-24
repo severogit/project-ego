@@ -17,11 +17,11 @@ export interface ChoiceImpact {
 }
 
 export const RARITY_WEIGHTS: Record<Rarity, number> = {
-  Common: 45,
-  Rare: 25,
-  Epic: 16,
-  Legendary: 10,
-  Egoist: 4,
+  Common: 1,
+  Rare: 1,
+  Epic: 1,
+  Legendary: 50,
+  Egoist: 50,
 }
 
 type RandomGenerator = () => number

@@ -22,6 +22,18 @@ export interface MatchScore {
   rival: number
 }
 
+export interface PlayerMatchDevStats {
+  offensiveCandidateCount: number
+  finisherSelectedCount: number
+  assistantCandidateCount: number
+  assistantSelectedCount: number
+  defensiveCandidateCount: number
+  defensiveSelectedCount: number
+  totalFinisherWeight: number
+  totalAssistantWeight: number
+  totalDefensiveWeight: number
+}
+
 export interface PlayerMatchStats {
   player: Player
   side: MatchSide
@@ -31,6 +43,7 @@ export interface PlayerMatchStats {
   defensiveActions: number
   flowActivations: number
   rating: number
+  dev?: PlayerMatchDevStats
 }
 
 export interface ActiveFlow {

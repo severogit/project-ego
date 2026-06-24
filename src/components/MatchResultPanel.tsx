@@ -1,10 +1,277 @@
-import type { MatchResult } from '../types/match'
+import type {
+  MatchResult,
+  MatchSide,
+  PlayerMatchDevStats,
+  PlayerMatchStats,
+} from '../types/match'
+import type { Player } from '../types/player'
+import { DEV_MODE } from '../utils/devMode'
+import { MATCH_CONFIG } from '../utils/match'
+import {
+  getActiveSynergies,
+  getActiveUniqueSynergies,
+  type TeamSynergy,
+} from '../utils/synergies'
 import { getTraitImpactSummary } from '../utils/traits'
 import PlayerImage from './PlayerImage'
 import SynergyPanel from './SynergyPanel'
 
 interface MatchResultPanelProps {
   result: MatchResult
+}
+
+interface SynergyImpactStats {
+  id: string
+  name: string
+  side: MatchSide
+  activations: number
+}
+
+interface SimulationParticipationRow {
+  playerStats: PlayerMatchStats
+  devStats: PlayerMatchDevStats
+  averageFinisherWeight: number
+  averageAssistantWeight: number
+  averageDefensiveWeight: number
+  insights: string[]
+}
+
+const MVP_SCORING = {
+  goal: 1.35,
+  assist: 0.8,
+  defense: 0.35,
+} as const
+
+const EMPTY_DEV_STATS: PlayerMatchDevStats = {
+  offensiveCandidateCount: 0,
+  finisherSelectedCount: 0,
+  assistantCandidateCount: 0,
+  assistantSelectedCount: 0,
+  defensiveCandidateCount: 0,
+  defensiveSelectedCount: 0,
+  totalFinisherWeight: 0,
+  totalAssistantWeight: 0,
+  totalDefensiveWeight: 0,
+}
+
+function getPlayerStatsKey(side: MatchSide, playerId: number): string {
+  return `${side}-${playerId}`
+}
+
+function descriptionBelongsToPlayer(
+  description: string,
+  player: Player,
+): boolean {
+  return description.toLowerCase().includes(player.name.toLowerCase())
+}
+
+function getTraitProcCounts(result: MatchResult): Map<string, number> {
+  const counts = new Map<string, number>()
+
+  for (const event of result.events) {
+    if (!event.traitImpactDescription) {
+      continue
+    }
+
+    const eventPlayer = result.stats.find(
+      (playerStats) =>
+        playerStats.side === event.side &&
+        playerStats.player.id === event.playerId,
+    )
+    const assistPlayer = event.assistPlayerId
+      ? result.stats.find(
+          (playerStats) =>
+            playerStats.side === event.side &&
+            playerStats.player.id === event.assistPlayerId,
+        )
+      : undefined
+    const candidateStats = [eventPlayer, assistPlayer].filter(
+      (playerStats): playerStats is PlayerMatchStats =>
+        Boolean(playerStats),
+    )
+    const impactedStats =
+      candidateStats.find((playerStats) =>
+        descriptionBelongsToPlayer(
+          event.traitImpactDescription ?? '',
+          playerStats.player,
+        ),
+      ) ??
+      eventPlayer ??
+      assistPlayer
+
+    if (!impactedStats) {
+      continue
+    }
+
+    const statsKey = getPlayerStatsKey(
+      impactedStats.side,
+      impactedStats.player.id,
+    )
+
+    counts.set(statsKey, (counts.get(statsKey) ?? 0) + 1)
+  }
+
+  return counts
+}
+
+function getActiveMatchSynergies(
+  result: MatchResult,
+): Array<TeamSynergy & { side: MatchSide }> {
+  return [
+    ...getActiveSynergies(result.playerTeam).map((synergy) => ({
+      ...synergy,
+      side: 'player' as const,
+    })),
+    ...getActiveUniqueSynergies(result.playerTeam).map((synergy) => ({
+      ...synergy,
+      side: 'player' as const,
+    })),
+    ...getActiveSynergies(result.rivalTeam).map((synergy) => ({
+      ...synergy,
+      side: 'rival' as const,
+    })),
+    ...getActiveUniqueSynergies(result.rivalTeam).map((synergy) => ({
+      ...synergy,
+      side: 'rival' as const,
+    })),
+  ]
+}
+
+function getSynergyImpactStats(result: MatchResult): SynergyImpactStats[] {
+  const activeSynergies = getActiveMatchSynergies(result)
+  const counts = new Map<string, number>()
+
+  for (const event of result.events) {
+    if (!event.synergyImpactDescription) {
+      continue
+    }
+
+    const impactedSynergy = activeSynergies.find(
+      (synergy) =>
+        synergy.side === event.side &&
+        event.synergyImpactDescription?.startsWith(synergy.name),
+    )
+
+    if (!impactedSynergy) {
+      continue
+    }
+
+    const synergyKey = `${impactedSynergy.side}-${impactedSynergy.id}`
+
+    counts.set(synergyKey, (counts.get(synergyKey) ?? 0) + 1)
+  }
+
+  return activeSynergies.map((synergy) => {
+    const synergyKey = `${synergy.side}-${synergy.id}`
+
+    return {
+      id: synergy.id,
+      name: synergy.name,
+      side: synergy.side,
+      activations: counts.get(synergyKey) ?? 0,
+    }
+  })
+}
+
+function formatActivationCount(activations: number): string {
+  return `${activations} ${
+    activations === 1 ? 'ativação' : 'ativações'
+  }`
+}
+
+function getAverageWeight(totalWeight: number, count: number): number {
+  return count > 0 ? totalWeight / count : 0
+}
+
+function formatAverageWeight(weight: number): string {
+  return weight > 0 ? weight.toFixed(1) : '-'
+}
+
+function getSimulationInsightLabels(
+  devStats: PlayerMatchDevStats,
+  averageFinisherWeight: number,
+  matchAverageFinisherWeight: number,
+): string[] {
+  const insights: string[] = []
+  const finisherSelectionRate =
+    devStats.offensiveCandidateCount > 0
+      ? devStats.finisherSelectedCount / devStats.offensiveCandidateCount
+      : 0
+
+  if (
+    devStats.offensiveCandidateCount >= 4 &&
+    finisherSelectionRate < 0.35
+  ) {
+    insights.push('Considerado muito, selecionado pouco')
+  }
+
+  if (devStats.offensiveCandidateCount <= 1) {
+    insights.push('Pouco envolvido ofensivamente')
+  }
+
+  if (
+    averageFinisherWeight > 0 &&
+    averageFinisherWeight >= matchAverageFinisherWeight * 1.15
+  ) {
+    insights.push('Alta prioridade ofensiva')
+  }
+
+  if (
+    devStats.defensiveCandidateCount >= 3 &&
+    devStats.defensiveSelectedCount >= 2
+  ) {
+    insights.push('Muito ativo defensivamente')
+  }
+
+  return insights
+}
+
+function getSimulationParticipationRows(
+  stats: PlayerMatchStats[],
+): SimulationParticipationRow[] {
+  const totalFinisherWeight = stats.reduce(
+    (total, playerStats) =>
+      total + (playerStats.dev?.totalFinisherWeight ?? 0),
+    0,
+  )
+  const totalOffensiveCandidates = stats.reduce(
+    (total, playerStats) =>
+      total + (playerStats.dev?.offensiveCandidateCount ?? 0),
+    0,
+  )
+  const matchAverageFinisherWeight = getAverageWeight(
+    totalFinisherWeight,
+    totalOffensiveCandidates,
+  )
+
+  return stats.map((playerStats) => {
+    const devStats = playerStats.dev ?? EMPTY_DEV_STATS
+    const averageFinisherWeight = getAverageWeight(
+      devStats.totalFinisherWeight,
+      devStats.offensiveCandidateCount,
+    )
+    const averageAssistantWeight = getAverageWeight(
+      devStats.totalAssistantWeight,
+      devStats.assistantCandidateCount,
+    )
+    const averageDefensiveWeight = getAverageWeight(
+      devStats.totalDefensiveWeight,
+      devStats.defensiveCandidateCount,
+    )
+
+    return {
+      playerStats,
+      devStats,
+      averageFinisherWeight,
+      averageAssistantWeight,
+      averageDefensiveWeight,
+      insights: getSimulationInsightLabels(
+        devStats,
+        averageFinisherWeight,
+        matchAverageFinisherWeight,
+      ),
+    }
+  })
 }
 
 function MatchResultPanel({ result }: MatchResultPanelProps) {
@@ -14,6 +281,19 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
       secondPlayer.goals - firstPlayer.goals ||
       secondPlayer.assists - firstPlayer.assists,
   )
+  const traitProcCounts = DEV_MODE ? getTraitProcCounts(result) : undefined
+  const synergyImpactStats = DEV_MODE
+    ? getSynergyImpactStats(result)
+    : undefined
+  const simulationParticipationRows = DEV_MODE
+    ? getSimulationParticipationRows(orderedStats)
+    : undefined
+  const mvpGoalScore = result.mvp.goals * MVP_SCORING.goal
+  const mvpAssistScore = result.mvp.assists * MVP_SCORING.assist
+  const mvpDefenseScore =
+    result.mvp.defensiveActions * MVP_SCORING.defense
+  const mvpFlowBonus =
+    result.mvp.flowActivations * MATCH_CONFIG.flow.mvpTieBreakBonus
 
   return (
     <section className="border border-white/10 bg-black/30 p-5 sm:p-8">
@@ -73,6 +353,42 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
             {result.mvp.goals} gols · {result.mvp.assists} assistências ·{' '}
             {result.mvp.defensiveActions} ações defensivas
           </p>
+          {DEV_MODE && (
+            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-amber-300/20 pt-4 text-xs">
+              <div>
+                <dt className="text-zinc-500">Gols</dt>
+                <dd className="font-bold text-white">
+                  {mvpGoalScore.toFixed(2)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Assistências</dt>
+                <dd className="font-bold text-white">
+                  {mvpAssistScore.toFixed(2)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Defesa</dt>
+                <dd className="font-bold text-white">
+                  {mvpDefenseScore.toFixed(2)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-zinc-500">Bonus por Flow</dt>
+                <dd className="font-bold text-amber-200">
+                  {mvpFlowBonus.toFixed(2)}
+                </dd>
+              </div>
+              <div className="col-span-2 flex items-center justify-between gap-3 border-t border-amber-300/20 pt-3">
+                <dt className="font-black uppercase tracking-wider text-amber-200">
+                  Pontuação final
+                </dt>
+                <dd className="font-black text-amber-100">
+                  {result.mvp.rating.toFixed(2)}
+                </dd>
+              </div>
+            </dl>
+          )}
         </div>
       </article>
 
@@ -125,13 +441,11 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
             <div className="flex justify-between gap-4">
               <dt className="text-sm text-zinc-500">Ativado</dt>
               <dd className="font-bold text-white">
-                {result.flowActivated ? 'Sim' : 'N\u00e3o'}
+                {result.flowActivated ? 'Sim' : 'Não'}
               </dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-sm text-zinc-500">
-                {'Ativa\u00e7\u00f5es'}
-              </dt>
+              <dt className="text-sm text-zinc-500">Ativações</dt>
               <dd className="font-bold text-amber-300">
                 {result.flowActivations}
               </dd>
@@ -153,31 +467,47 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
       </div>
 
       <div className="mt-8 overflow-x-auto">
-        <table className="w-full min-w-[940px] border-collapse text-left">
+        <table
+          className={`w-full table-fixed border-collapse text-left ${
+            DEV_MODE ? 'min-w-[980px]' : 'min-w-[860px]'
+          }`}
+        >
           <thead>
-            <tr className="border-b border-white/10 text-[10px] uppercase tracking-widest text-zinc-500">
-              <th className="px-3 py-3 font-bold">Jogador</th>
-              <th className="px-3 py-3 font-bold">Time</th>
-              <th className="px-3 py-3 font-bold">Trait Impact</th>
-              <th className="px-3 py-3 text-center font-bold">Gols</th>
-              <th className="px-3 py-3 text-center font-bold">Assist.</th>
-              <th className="px-3 py-3 text-center font-bold">Final.</th>
-              <th className="px-3 py-3 text-center font-bold">Def.</th>
-              <th className="px-3 py-3 text-center font-bold">FLOW</th>
-              <th className="px-3 py-3 text-right font-bold">Nota</th>
+            <tr className="border-b border-white/10 text-[9px] uppercase tracking-wider text-zinc-500">
+              <th className="w-[18%] px-2 py-2 font-bold">Jogador</th>
+              <th className="w-[9%] px-2 py-2 font-bold">Time</th>
+              <th className="w-[20%] px-2 py-2 font-bold">Trait Impact</th>
+              <th className="w-[6%] px-2 py-2 text-center font-bold">Gols</th>
+              <th className="w-[7%] px-2 py-2 text-center font-bold">Assist.</th>
+              {DEV_MODE && (
+                <th className="w-[9%] px-2 py-2 text-center font-bold">
+                  Participações
+                </th>
+              )}
+              <th className="w-[6%] px-2 py-2 text-center font-bold">Final.</th>
+              <th className="w-[6%] px-2 py-2 text-center font-bold">Def.</th>
+              <th className="w-[6%] px-2 py-2 text-center font-bold">
+                {DEV_MODE ? 'FLOWS' : 'FLOW'}
+              </th>
+              {DEV_MODE && (
+                <th className="w-[8%] px-2 py-2 text-center font-bold">
+                  Trait Proc
+                </th>
+              )}
+              <th className="w-[6%] px-2 py-2 text-right font-bold">Nota</th>
             </tr>
           </thead>
           <tbody>
             {orderedStats.map((playerStats) => (
               <tr
                 key={`${playerStats.side}-${playerStats.player.id}`}
-                className="border-b border-white/5 text-sm"
+                className="border-b border-white/5 text-xs"
               >
-                <td className="px-3 py-3 font-bold text-white">
+                <td className="truncate px-2 py-2 font-bold text-white">
                   {playerStats.player.name}
                 </td>
                 <td
-                  className={`px-3 py-3 ${
+                  className={`px-2 py-2 ${
                     playerStats.side === 'player'
                       ? 'text-blue-300'
                       : 'text-rose-300'
@@ -185,25 +515,44 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
                 >
                   {playerStats.side === 'player' ? 'Seu time' : 'Rival'}
                 </td>
-                <td className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-amber-200">
+                <td className="truncate px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-amber-200">
                   {getTraitImpactSummary(playerStats.player)}
                 </td>
-                <td className="px-3 py-3 text-center text-zinc-300">
+                <td className="px-2 py-2 text-center text-zinc-300">
                   {playerStats.goals}
                 </td>
-                <td className="px-3 py-3 text-center text-zinc-300">
+                <td className="px-2 py-2 text-center text-zinc-300">
                   {playerStats.assists}
                 </td>
-                <td className="px-3 py-3 text-center text-zinc-300">
+                {DEV_MODE && (
+                  <td className="px-2 py-2 text-center font-bold text-cyan-200">
+                    {playerStats.goals + playerStats.assists}
+                  </td>
+                )}
+                <td className="px-2 py-2 text-center text-zinc-300">
                   {playerStats.shots}
                 </td>
-                <td className="px-3 py-3 text-center text-zinc-300">
+                <td className="px-2 py-2 text-center text-zinc-300">
                   {playerStats.defensiveActions}
                 </td>
-                <td className="px-3 py-3 text-center font-bold text-amber-300">
-                  {playerStats.flowActivations > 0 ? 'Sim' : '-'}
+                <td className="px-2 py-2 text-center font-bold text-amber-300">
+                  {DEV_MODE
+                    ? playerStats.flowActivations
+                    : playerStats.flowActivations > 0
+                      ? 'Sim'
+                      : '-'}
                 </td>
-                <td className="px-3 py-3 text-right font-black text-amber-300">
+                {DEV_MODE && (
+                  <td className="px-2 py-2 text-center font-bold text-amber-200">
+                    {traitProcCounts?.get(
+                      getPlayerStatsKey(
+                        playerStats.side,
+                        playerStats.player.id,
+                      ),
+                    ) ?? 0}
+                  </td>
+                )}
+                <td className="px-2 py-2 text-right font-black text-amber-300">
                   {playerStats.rating.toFixed(1)}
                 </td>
               </tr>
@@ -211,6 +560,179 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
           </tbody>
         </table>
       </div>
+
+      {DEV_MODE && simulationParticipationRows && (
+        <details
+          open
+          className="mt-8 border border-cyan-300/20 bg-cyan-300/[0.04] p-5"
+        >
+          <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.2em] text-cyan-200">
+            DEV - Participação na Simulação
+          </summary>
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {simulationParticipationRows.map((row) => (
+              <article
+                key={`${row.playerStats.side}-${row.playerStats.player.id}`}
+                className="border border-white/10 bg-black/20 p-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0">
+                    <h4 className="truncate text-sm font-black uppercase italic text-white">
+                      {row.playerStats.player.name}
+                    </h4>
+                    <p
+                      className={`mt-1 text-[10px] font-bold uppercase tracking-wider ${
+                        row.playerStats.side === 'player'
+                          ? 'text-blue-300'
+                          : 'text-rose-300'
+                      }`}
+                    >
+                      {row.playerStats.side === 'player'
+                        ? 'Seu time'
+                        : 'Rival'}
+                    </p>
+                  </div>
+                </div>
+
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Cand. Fin.
+                    </dt>
+                    <dd className="mt-1 font-black text-white">
+                      {row.devStats.offensiveCandidateCount}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Sel. Fin.
+                    </dt>
+                    <dd className="mt-1 font-black text-white">
+                      {row.devStats.finisherSelectedCount}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Peso Fin.
+                    </dt>
+                    <dd className="mt-1 font-black text-cyan-100">
+                      {formatAverageWeight(row.averageFinisherWeight)}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Cand. Assist.
+                    </dt>
+                    <dd className="mt-1 font-black text-white">
+                      {row.devStats.assistantCandidateCount}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Sel. Assist.
+                    </dt>
+                    <dd className="mt-1 font-black text-white">
+                      {row.devStats.assistantSelectedCount}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Peso Assist.
+                    </dt>
+                    <dd className="mt-1 font-black text-cyan-100">
+                      {formatAverageWeight(row.averageAssistantWeight)}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Cand. Def.
+                    </dt>
+                    <dd className="mt-1 font-black text-white">
+                      {row.devStats.defensiveCandidateCount}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Sel. Def.
+                    </dt>
+                    <dd className="mt-1 font-black text-white">
+                      {row.devStats.defensiveSelectedCount}
+                    </dd>
+                  </div>
+                  <div className="border border-white/5 bg-white/[0.03] p-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Peso Def.
+                    </dt>
+                    <dd className="mt-1 font-black text-cyan-100">
+                      {formatAverageWeight(row.averageDefensiveWeight)}
+                    </dd>
+                  </div>
+                </dl>
+
+                {row.insights.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {row.insights.map((insight) => (
+                      <span
+                        key={insight}
+                        className="border border-amber-300/20 bg-amber-300/[0.08] px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-100"
+                      >
+                        {insight}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {DEV_MODE && (
+        <section className="mt-8 border border-cyan-300/20 bg-cyan-300/[0.04] p-5">
+          <h3 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-200">
+            DEV
+          </h3>
+          <div className="mt-5">
+            <h4 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
+              Sinergias ativadas
+            </h4>
+            {synergyImpactStats && synergyImpactStats.length > 0 ? (
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {synergyImpactStats.map((synergyStats) => (
+                  <li
+                    key={`${synergyStats.side}-${synergyStats.id}`}
+                    className="flex items-center justify-between gap-4 border border-white/10 bg-black/20 px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-bold text-white">
+                        {synergyStats.name}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wider ${
+                          synergyStats.side === 'player'
+                            ? 'text-blue-300'
+                            : 'text-rose-300'
+                        }`}
+                      >
+                        {synergyStats.side === 'player'
+                          ? 'Seu time'
+                          : 'Rival'}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-black text-cyan-100">
+                      {formatActivationCount(synergyStats.activations)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-zinc-500">
+                Nenhuma sinergia ativada.
+              </p>
+            )}
+          </div>
+        </section>
+      )}
     </section>
   )
 }

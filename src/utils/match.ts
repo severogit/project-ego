@@ -4,6 +4,7 @@ import type {
   MatchEvent,
   MatchResult,
   MatchSide,
+  PlayerMatchDevStats,
   PlayerMatchStats,
   TeamMatchStrength,
 } from '../types/match'
@@ -94,10 +95,29 @@ interface WeightBreakdown {
   finalWeight: number
 }
 
+interface WeightedPlayerCandidate {
+  player: Player
+  weightBreakdown: WeightBreakdown
+}
+
+interface PlayerSelectionResult {
+  player: Player
+  weightBreakdown: WeightBreakdown
+  stats: PlayerMatchStats[]
+}
+
+interface OptionalPlayerSelectionResult {
+  player?: Player
+  weightBreakdown?: WeightBreakdown
+  stats: PlayerMatchStats[]
+}
+
 interface GoalImpactDescriptions {
   traitImpactDescription?: string
   synergyImpactDescription?: string
 }
+
+type DevSelectionRole = 'finisher' | 'assistant' | 'defensive'
 
 const loggedMatchResults = new WeakSet<LiveMatchState>()
 
@@ -236,31 +256,44 @@ function applyUpsetBonus(
   }
 }
 
+function createEmptyDevStats(): PlayerMatchDevStats {
+  return {
+    offensiveCandidateCount: 0,
+    finisherSelectedCount: 0,
+    assistantCandidateCount: 0,
+    assistantSelectedCount: 0,
+    defensiveCandidateCount: 0,
+    defensiveSelectedCount: 0,
+    totalFinisherWeight: 0,
+    totalAssistantWeight: 0,
+    totalDefensiveWeight: 0,
+  }
+}
+
+function createInitialPlayerStats(
+  player: Player,
+  side: MatchSide,
+): PlayerMatchStats {
+  return {
+    player,
+    side,
+    goals: 0,
+    assists: 0,
+    shots: 0,
+    defensiveActions: 0,
+    flowActivations: 0,
+    rating: 6,
+    dev: createEmptyDevStats(),
+  }
+}
+
 function createInitialStats(
   playerTeam: Player[],
   rivalTeam: Player[],
 ): PlayerMatchStats[] {
   return [
-    ...playerTeam.map((player) => ({
-      player,
-      side: 'player' as const,
-      goals: 0,
-      assists: 0,
-      shots: 0,
-      defensiveActions: 0,
-      flowActivations: 0,
-      rating: 6,
-    })),
-    ...rivalTeam.map((player) => ({
-      player,
-      side: 'rival' as const,
-      goals: 0,
-      assists: 0,
-      shots: 0,
-      defensiveActions: 0,
-      flowActivations: 0,
-      rating: 6,
-    })),
+    ...playerTeam.map((player) => createInitialPlayerStats(player, 'player')),
+    ...rivalTeam.map((player) => createInitialPlayerStats(player, 'rival')),
   ]
 }
 
@@ -325,30 +358,31 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value))
 }
 
-function selectWeightedPlayer(
-  team: Player[],
-  getWeight: (player: Player) => number,
+function getCandidateSelectionWeight(
+  candidate: WeightedPlayerCandidate,
+): number {
+  return Math.max(1, candidate.weightBreakdown.finalWeight)
+}
+
+function selectWeightedPlayerCandidate(
+  candidates: WeightedPlayerCandidate[],
   random: RandomGenerator,
-  excludedPlayerId?: number,
-): Player {
-  const availablePlayers = team.filter(
-    (player) => player.id !== excludedPlayerId,
-  )
-  const totalWeight = availablePlayers.reduce(
-    (total, player) => total + Math.max(1, getWeight(player)),
+): WeightedPlayerCandidate {
+  const totalWeight = candidates.reduce(
+    (total, candidate) => total + getCandidateSelectionWeight(candidate),
     0,
   )
   let threshold = random() * totalWeight
 
-  for (const player of availablePlayers) {
-    threshold -= Math.max(1, getWeight(player))
+  for (const candidate of candidates) {
+    threshold -= getCandidateSelectionWeight(candidate)
 
     if (threshold < 0) {
-      return player
+      return candidate
     }
   }
 
-  return availablePlayers[availablePlayers.length - 1]
+  return candidates[candidates.length - 1]
 }
 
 function calculateRating(stats: PlayerMatchStats): number {
@@ -400,6 +434,105 @@ function updateStats(
     return {
       ...updatedStats,
       rating: calculateRating(updatedStats),
+    }
+  })
+}
+
+function getDevStats(stats: PlayerMatchStats): PlayerMatchDevStats {
+  return stats.dev ?? createEmptyDevStats()
+}
+
+function updateDevMetrics(
+  stats: PlayerMatchStats[],
+  side: MatchSide,
+  playerId: number,
+  updateDevStats: (devStats: PlayerMatchDevStats) => PlayerMatchDevStats,
+): PlayerMatchStats[] {
+  return stats.map((playerStats) => {
+    if (
+      playerStats.side !== side ||
+      playerStats.player.id !== playerId
+    ) {
+      return playerStats
+    }
+
+    return {
+      ...playerStats,
+      dev: updateDevStats(getDevStats(playerStats)),
+    }
+  })
+}
+
+function recordDevCandidateMetrics(
+  stats: PlayerMatchStats[],
+  side: MatchSide,
+  candidates: WeightedPlayerCandidate[],
+  role: DevSelectionRole,
+): PlayerMatchStats[] {
+  return candidates.reduce((nextStats, candidate) => {
+    const finalWeight = candidate.weightBreakdown.finalWeight
+
+    return updateDevMetrics(
+      nextStats,
+      side,
+      candidate.player.id,
+      (devStats) => {
+        if (role === 'finisher') {
+          return {
+            ...devStats,
+            offensiveCandidateCount:
+              devStats.offensiveCandidateCount + 1,
+            totalFinisherWeight:
+              devStats.totalFinisherWeight + finalWeight,
+          }
+        }
+
+        if (role === 'assistant') {
+          return {
+            ...devStats,
+            assistantCandidateCount:
+              devStats.assistantCandidateCount + 1,
+            totalAssistantWeight:
+              devStats.totalAssistantWeight + finalWeight,
+          }
+        }
+
+        return {
+          ...devStats,
+          defensiveCandidateCount:
+            devStats.defensiveCandidateCount + 1,
+          totalDefensiveWeight:
+            devStats.totalDefensiveWeight + finalWeight,
+        }
+      },
+    )
+  }, stats)
+}
+
+function recordDevSelectedMetric(
+  stats: PlayerMatchStats[],
+  side: MatchSide,
+  playerId: number,
+  role: DevSelectionRole,
+): PlayerMatchStats[] {
+  return updateDevMetrics(stats, side, playerId, (devStats) => {
+    if (role === 'finisher') {
+      return {
+        ...devStats,
+        finisherSelectedCount: devStats.finisherSelectedCount + 1,
+      }
+    }
+
+    if (role === 'assistant') {
+      return {
+        ...devStats,
+        assistantSelectedCount: devStats.assistantSelectedCount + 1,
+      }
+    }
+
+    return {
+      ...devStats,
+      defensiveSelectedCount: devStats.defensiveSelectedCount + 1,
     }
   })
 }
@@ -966,18 +1099,6 @@ function getFinisherWeightBreakdown(
   }
 }
 
-function getFinisherWeight(
-  state: LiveMatchState,
-  attackingSide: MatchSide,
-  player: Player,
-): number {
-  return getFinisherWeightBreakdown(
-    state,
-    attackingSide,
-    player,
-  ).finalWeight
-}
-
 function getAssistantWeightBreakdown(
   state: LiveMatchState,
   attackingSide: MatchSide,
@@ -1019,28 +1140,76 @@ function getAssistantWeightBreakdown(
   }
 }
 
-function getAssistantWeight(
+function getDefensiveWeightBreakdown(
   state: LiveMatchState,
-  attackingSide: MatchSide,
+  defendingSide: MatchSide,
   player: Player,
-): number {
-  return getAssistantWeightBreakdown(
+): WeightBreakdown {
+  const vision = getFlowAdjustedAttribute(
     state,
-    attackingSide,
+    defendingSide,
     player,
-  ).finalWeight
+    'vision',
+  )
+  const baseWeight = player.defense * 0.7 + vision * 0.3
+  const traitWeight = getDefensiveActionTraitWeight(
+    player,
+    baseWeight,
+    getTraitContext(state, defendingSide),
+  )
+  const synergyWeight =
+    traitWeight *
+    getPlayerSynergyMultiplier(
+      getTeam(state, defendingSide),
+      player,
+      'defensiveActionBonus',
+    )
+
+  return {
+    baseWeight,
+    finalWeight: applyFlowParticipationWeight(
+      state,
+      defendingSide,
+      player,
+      synergyWeight,
+    ),
+  }
 }
 
 function selectFinisher(
   state: LiveMatchState,
   attackingSide: MatchSide,
   random: RandomGenerator,
-): Player {
-  return selectWeightedPlayer(
-    getTeam(state, attackingSide),
-    (player) => getFinisherWeight(state, attackingSide, player),
+): PlayerSelectionResult {
+  const candidates = getTeam(state, attackingSide).map((player) => ({
+    player,
+    weightBreakdown: getFinisherWeightBreakdown(
+      state,
+      attackingSide,
+      player,
+    ),
+  }))
+  const selectedCandidate = selectWeightedPlayerCandidate(
+    candidates,
     random,
   )
+  const statsWithCandidates = recordDevCandidateMetrics(
+    state.stats,
+    attackingSide,
+    candidates,
+    'finisher',
+  )
+
+  return {
+    player: selectedCandidate.player,
+    weightBreakdown: selectedCandidate.weightBreakdown,
+    stats: recordDevSelectedMetric(
+      statsWithCandidates,
+      attackingSide,
+      selectedCandidate.player.id,
+      'finisher',
+    ),
+  }
 }
 
 function selectAssistant(
@@ -1048,20 +1217,48 @@ function selectAssistant(
   attackingSide: MatchSide,
   finisher: Player,
   random: RandomGenerator,
-): Player | undefined {
+  stats: PlayerMatchStats[],
+): OptionalPlayerSelectionResult {
   const attackingTeam = getTeam(state, attackingSide)
   const hasAssist =
     attackingTeam.length > 1 &&
     random() < getAssistChance(state, attackingSide)
 
-  return hasAssist
-    ? selectWeightedPlayer(
-        attackingTeam,
-        (player) => getAssistantWeight(state, attackingSide, player),
-        random,
-        finisher.id,
-      )
-    : undefined
+  if (!hasAssist) {
+    return { stats }
+  }
+
+  const candidates = attackingTeam
+    .filter((player) => player.id !== finisher.id)
+    .map((player) => ({
+      player,
+      weightBreakdown: getAssistantWeightBreakdown(
+        state,
+        attackingSide,
+        player,
+      ),
+    }))
+  const selectedCandidate = selectWeightedPlayerCandidate(
+    candidates,
+    random,
+  )
+  const statsWithCandidates = recordDevCandidateMetrics(
+    stats,
+    attackingSide,
+    candidates,
+    'assistant',
+  )
+
+  return {
+    player: selectedCandidate.player,
+    weightBreakdown: selectedCandidate.weightBreakdown,
+    stats: recordDevSelectedMetric(
+      statsWithCandidates,
+      attackingSide,
+      selectedCandidate.player.id,
+      'assistant',
+    ),
+  }
 }
 
 function wasChanceIncreaseDecisive(
@@ -1178,6 +1375,7 @@ function createGoalEvent(
   scorer: Player,
   assistant?: Player,
   impactDescriptions: GoalImpactDescriptions = {},
+  currentStats: PlayerMatchStats[] = state.stats,
 ): {
   event: MatchEvent
   score: LiveMatchState['score']
@@ -1188,7 +1386,7 @@ function createGoalEvent(
     ...state.score,
     [attackingSide]: state.score[attackingSide] + 1,
   }
-  let stats = updateStats(state.stats, attackingSide, scorer.id, {
+  let stats = updateStats(currentStats, attackingSide, scorer.id, {
     goals: 1,
     shots: 1,
   })
@@ -1224,6 +1422,7 @@ function createShotEvent(
   state: LiveMatchState,
   attackingSide: MatchSide,
   shooter: Player,
+  currentStats: PlayerMatchStats[] = state.stats,
 ): {
   event: MatchEvent
   stats: PlayerMatchStats[]
@@ -1251,7 +1450,7 @@ function createShotEvent(
       ),
       scoreAfter: { ...state.score },
     },
-    stats: updateStats(state.stats, attackingSide, shooter.id, {
+    stats: updateStats(currentStats, attackingSide, shooter.id, {
       shots: 1,
     }),
   }
@@ -1267,21 +1466,18 @@ function createFinishingEvent(
   score: LiveMatchState['score']
   stats: PlayerMatchStats[]
 } {
-  const finisher = selectFinisher(state, attackingSide, random)
-  const assistant = selectAssistant(
+  const finisherSelection = selectFinisher(state, attackingSide, random)
+  const finisher = finisherSelection.player
+  const assistantSelection = selectAssistant(
     state,
     attackingSide,
     finisher,
     random,
+    finisherSelection.stats,
   )
-  const finisherWeight = getFinisherWeightBreakdown(
-    state,
-    attackingSide,
-    finisher,
-  )
-  const assistantWeight = assistant
-    ? getAssistantWeightBreakdown(state, attackingSide, assistant)
-    : undefined
+  const assistant = assistantSelection.player
+  const finisherWeight = finisherSelection.weightBreakdown
+  const assistantWeight = assistantSelection.weightBreakdown
   const baseGoalChance = getBaseGoalConversionChance(MATCH_CONFIG.eventChance)
   const flowAdjustedGoalChance = getBaseGoalConversionChance(eventChances)
   const traitContext = getTraitContext(state, attackingSide)
@@ -1359,9 +1555,15 @@ function createFinishingEvent(
         traitImpactDescription,
         synergyImpactDescription,
       },
+      assistantSelection.stats,
     )
   } else {
-    const shotEvent = createShotEvent(state, attackingSide, finisher)
+    const shotEvent = createShotEvent(
+      state,
+      attackingSide,
+      finisher,
+      assistantSelection.stats,
+    )
 
     finishingEvent = {
       ...shotEvent,
@@ -1405,61 +1607,33 @@ function createDefenseEvent(
   stats: PlayerMatchStats[]
 } {
   const defendingSide = getOppositeSide(attackingSide)
-  const defender = selectWeightedPlayer(
-    getTeam(state, defendingSide),
-    (player) => {
-      const vision = getFlowAdjustedAttribute(
-        state,
-        defendingSide,
-        player,
-        'vision',
-      )
-      const baseWeight = player.defense * 0.7 + vision * 0.3
-      const traitWeight = getDefensiveActionTraitWeight(
-        player,
-        baseWeight,
-        getTraitContext(state, defendingSide),
-      )
-      const synergyWeight =
-        traitWeight *
-        getPlayerSynergyMultiplier(
-          getTeam(state, defendingSide),
-          player,
-          'defensiveActionBonus',
-        )
-
-      return applyFlowParticipationWeight(
-        state,
-        defendingSide,
-        player,
-        synergyWeight,
-      )
-    },
+  const candidates = getTeam(state, defendingSide).map((player) => ({
+    player,
+    weightBreakdown: getDefensiveWeightBreakdown(
+      state,
+      defendingSide,
+      player,
+    ),
+  }))
+  const selectedCandidate = selectWeightedPlayerCandidate(
+    candidates,
     random,
   )
+  const defender = selectedCandidate.player
+  const statsWithCandidates = recordDevCandidateMetrics(
+    state.stats,
+    defendingSide,
+    candidates,
+    'defensive',
+  )
+  const statsWithSelection = recordDevSelectedMetric(
+    statsWithCandidates,
+    defendingSide,
+    defender.id,
+    'defensive',
+  )
   const eventId = state.events.length + 1
-  const defenderVision = getFlowAdjustedAttribute(
-    state,
-    defendingSide,
-    defender,
-    'vision',
-  )
-  const defenderBaseWeight = defender.defense * 0.7 + defenderVision * 0.3
-  const defenderFinalWeight = applyFlowParticipationWeight(
-    state,
-    defendingSide,
-    defender,
-    getDefensiveActionTraitWeight(
-      defender,
-      defenderBaseWeight,
-      getTraitContext(state, defendingSide),
-    ) *
-      getPlayerSynergyMultiplier(
-        getTeam(state, defendingSide),
-        defender,
-        'defensiveActionBonus',
-      ),
-  )
+  const defenderWeight = selectedCandidate.weightBreakdown
 
   debugLog('event:generated', {
     attackingSide,
@@ -1469,10 +1643,7 @@ function createDefenseEvent(
     baseGoalChance: null,
     finalGoalChance: null,
     defender: defender.name,
-    defenderWeight: formatWeightForDebug({
-      baseWeight: defenderBaseWeight,
-      finalWeight: defenderFinalWeight,
-    }),
+    defenderWeight: formatWeightForDebug(defenderWeight),
     eventGenerated: {
       type: 'defense',
       player: defender.name,
@@ -1501,7 +1672,7 @@ function createDefenseEvent(
       description: `${defender.name} fez uma ação defensiva decisiva.`,
       scoreAfter: { ...state.score },
     },
-    stats: updateStats(state.stats, defendingSide, defender.id, {
+    stats: updateStats(statsWithSelection, defendingSide, defender.id, {
       defensiveActions: 1,
     }),
   }
