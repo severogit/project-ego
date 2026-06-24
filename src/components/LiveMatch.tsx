@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { LiveMatchDevCommand } from '../types/devTools'
 import type { MatchPhase } from '../types/game'
 import type { LiveMatchState, MatchResult } from '../types/match'
 import type { Player } from '../types/player'
@@ -6,6 +7,8 @@ import { MATCH_PHASE_LABELS } from '../utils/gameFlow'
 import {
   advanceLiveMatch,
   createMatchResult,
+  forceFlowActivation,
+  forceMatchWinner,
   getNextEventDelay,
   initializeLiveMatch,
   MATCH_CONFIG,
@@ -19,6 +22,7 @@ interface LiveMatchProps {
   rivalTeam: Player[]
   phase: MatchPhase
   onComplete: (result: MatchResult) => void
+  devCommand?: LiveMatchDevCommand
 }
 
 const eventSideStyles = {
@@ -74,8 +78,10 @@ function LiveMatch({
   rivalTeam,
   phase,
   onComplete,
+  devCommand,
 }: LiveMatchProps) {
   const continueLockedRef = useRef(false)
+  const forceFlowNextRef = useRef(false)
   const timelineScrollRef = useRef<HTMLDivElement>(null)
   const [simulationSpeed, setSimulationSpeed] =
     useState<SimulationSpeed>(1)
@@ -94,13 +100,60 @@ function LiveMatch({
     }
 
     const timer = window.setTimeout(() => {
-      setMatchState((currentState) => advanceLiveMatch(currentState))
+      setMatchState((currentState) => {
+        if (forceFlowNextRef.current) {
+          forceFlowNextRef.current = false
+
+          const flowState = forceFlowActivation(currentState)
+
+          if (flowState !== currentState) {
+            return flowState
+          }
+        }
+
+        return advanceLiveMatch(currentState)
+      })
     }, getNextEventDelay(simulationSpeed))
 
     return () => {
       window.clearTimeout(timer)
     }
   }, [matchState.events.length, matchState.isFinished, simulationSpeed])
+
+  useEffect(() => {
+    if (!devCommand) {
+      return
+    }
+
+    if (devCommand.type === 'force-player-win') {
+      forceFlowNextRef.current = false
+      const timer = window.setTimeout(() => {
+        setMatchState((currentState) =>
+          forceMatchWinner(currentState, 'player'),
+        )
+      }, 0)
+
+      return () => {
+        window.clearTimeout(timer)
+      }
+    }
+
+    if (devCommand.type === 'force-rival-win') {
+      forceFlowNextRef.current = false
+      const timer = window.setTimeout(() => {
+        setMatchState((currentState) =>
+          forceMatchWinner(currentState, 'rival'),
+        )
+      }, 0)
+
+      return () => {
+        window.clearTimeout(timer)
+      }
+    }
+
+    forceFlowNextRef.current = true
+    return undefined
+  }, [devCommand])
 
   useEffect(() => {
     const timeline = timelineScrollRef.current

@@ -10,10 +10,14 @@ import type {
 import type { Player } from '../types/player'
 import { calculateTeamPower } from './draft.ts'
 import {
+  getActiveSynergies,
+  getActiveUniqueSynergies,
   getPlayerSynergyMultiplier,
   getSynergyImpactMessage,
+  getSynergyEffectSummary,
   getTeamSynergyBonus,
   getTeamSynergyMultiplier,
+  type TeamSynergy,
 } from './synergies.ts'
 import {
   getAssistTraitWeight,
@@ -21,9 +25,13 @@ import {
   getFlowChanceTraitMultiplier,
   getGoalConversionTraitMultiplier,
   getShotTraitWeight,
+  getTraitImpactSummary,
   getTraitImpactMessage,
+  getTraitModifiers,
   type TraitContext,
 } from './traits.ts'
+
+export const DEBUG_MODE = false
 
 export const MATCH_CONFIG = {
   targetGoals: 5,
@@ -80,6 +88,93 @@ export const SIMULATION_SPEED_OPTIONS = [1, 2, 4] as const
 
 export type SimulationSpeed = (typeof SIMULATION_SPEED_OPTIONS)[number]
 export type RandomGenerator = () => number
+
+interface WeightBreakdown {
+  baseWeight: number
+  finalWeight: number
+}
+
+interface GoalImpactDescriptions {
+  traitImpactDescription?: string
+  synergyImpactDescription?: string
+}
+
+const loggedMatchResults = new WeakSet<LiveMatchState>()
+
+function debugLog(label: string, data: unknown): void {
+  if (!DEBUG_MODE) {
+    return
+  }
+
+  console.log(`[Project Ego DEBUG] ${label}`, data)
+}
+
+function formatPlayerForDebug(player: Player) {
+  return {
+    id: player.id,
+    name: player.name,
+    position: player.position,
+    rarity: player.rarity,
+    trait: player.trait?.name ?? '-',
+    archetypes: player.archetypes ?? [],
+    attack: player.attack,
+    speed: player.speed,
+    vision: player.vision,
+    dribble: player.dribble,
+    defense: player.defense,
+    ego: player.ego,
+    flowRate: player.flowRate,
+  }
+}
+
+function formatTeamForDebug(team: Player[]) {
+  return team.map(formatPlayerForDebug)
+}
+
+function formatActiveTraitsForDebug(team: Player[]) {
+  return team
+    .filter((player) => player.trait)
+    .map((player) => ({
+      player: player.name,
+      trait: player.trait?.name,
+      impact: getTraitImpactSummary(player),
+    }))
+}
+
+function formatSynergyForDebug(synergy: TeamSynergy) {
+  return {
+    id: synergy.id,
+    name: synergy.name,
+    effect: getSynergyEffectSummary(synergy),
+  }
+}
+
+function formatActiveSynergiesForDebug(team: Player[]) {
+  return {
+    archetype: getActiveSynergies(team).map(formatSynergyForDebug),
+    unique: getActiveUniqueSynergies(team).map(formatSynergyForDebug),
+  }
+}
+
+function formatStrengthForDebug(strength: TeamMatchStrength) {
+  return {
+    basePower: strength.basePower,
+    averageEgo: Number(strength.averageEgo.toFixed(2)),
+    randomFactor: Number(strength.randomFactor.toFixed(3)),
+    clutchBonus: Number(strength.clutchBonus.toFixed(2)),
+    upsetBonus: Number(strength.upsetBonus.toFixed(2)),
+    finalStrength: Number(strength.finalStrength.toFixed(2)),
+  }
+}
+
+function formatWeightForDebug(weight: WeightBreakdown | undefined) {
+  return weight
+    ? {
+        baseWeight: Number(weight.baseWeight.toFixed(2)),
+        finalWeight: Number(weight.finalWeight.toFixed(2)),
+      }
+    : undefined
+}
 
 function randomBetween(
   minimum: number,
@@ -190,6 +285,24 @@ export function initializeLiveMatch(
       rivalStrength = applyUpsetBonus(rivalStrength, random)
     }
   }
+
+  debugLog('match:before-start', {
+    playerTeam: formatTeamForDebug(playerTeam),
+    rivalTeam: formatTeamForDebug(rivalTeam),
+    activeTraits: {
+      player: formatActiveTraitsForDebug(playerTeam),
+      rival: formatActiveTraitsForDebug(rivalTeam),
+    },
+    activeSynergies: {
+      player: formatActiveSynergiesForDebug(playerTeam),
+      rival: formatActiveSynergiesForDebug(rivalTeam),
+    },
+    strengths: {
+      player: formatStrengthForDebug(playerStrength),
+      rival: formatStrengthForDebug(rivalStrength),
+    },
+    upsetOccurred,
+  })
 
   return {
     playerTeam,
@@ -533,7 +646,27 @@ function tryActivateFlow(
     MATCH_CONFIG.flow.maxActivationChance,
   )
 
-  if (random() >= totalActivationChance) {
+  debugLog('flow:activation-check', {
+    eligiblePlayers: eligibleStats.map((stats) => ({
+      side: stats.side,
+      player: stats.player.name,
+      flowRate: stats.player.flowRate,
+      chance: Number(getFlowActivationChance(stats, state).toFixed(4)),
+      goals: stats.goals,
+      assists: stats.assists,
+      shots: stats.shots,
+      defensiveActions: stats.defensiveActions,
+    })),
+    totalActivationChance: Number(totalActivationChance.toFixed(4)),
+  })
+
+  const activationRoll = random()
+
+  if (activationRoll >= totalActivationChance) {
+    debugLog('flow:not-activated', {
+      activationRoll: Number(activationRoll.toFixed(4)),
+      totalActivationChance: Number(totalActivationChance.toFixed(4)),
+    })
     return null
   }
 
@@ -586,6 +719,17 @@ function tryActivateFlow(
       MATCH_CONFIG.flow.durationOffensivePossessions,
     eventsRemaining: MATCH_CONFIG.flow.durationRelevantEvents,
   }
+
+  debugLog('flow:activated', {
+    activationRoll: Number(activationRoll.toFixed(4)),
+    totalActivationChance: Number(totalActivationChance.toFixed(4)),
+    selectedPlayer: selectedStats.player.name,
+    side: selectedStats.side,
+    durationRemaining: {
+      offensivePossessions: activeFlow.offensivePossessionsRemaining,
+      relevantEvents: activeFlow.eventsRemaining,
+    },
+  })
 
   return {
     ...state,
@@ -650,6 +794,22 @@ function advanceFlowDurations(
     } else {
       activeFlows.push(updatedFlow)
     }
+  }
+
+  if (state.activeFlows.length > 0) {
+    debugLog('flow:duration-update', {
+      attackingSide,
+      activeFlows: activeFlows.map((flow) => ({
+        player: flow.playerName,
+        side: flow.side,
+        offensivePossessions: flow.offensivePossessionsRemaining,
+        relevantEvents: flow.eventsRemaining,
+      })),
+      endedFlows: endedEvents.map((event) => ({
+        player: event.playerName,
+        side: event.side,
+      })),
+    })
   }
 
   return {
@@ -749,11 +909,11 @@ function getBaseGoalConversionChance(eventChances: {
     : eventChances.goal / shotAttemptChance
 }
 
-function getFinisherWeight(
+function getFinisherWeightBreakdown(
   state: LiveMatchState,
   attackingSide: MatchSide,
   player: Player,
-): number {
+): WeightBreakdown {
   const attack = getFlowAdjustedAttribute(
     state,
     attackingSide,
@@ -795,19 +955,34 @@ function getFinisherWeight(
       'finisherSelectionBonus',
     )
 
-  return applyFlowParticipationWeight(
-    state,
-    attackingSide,
-    player,
-    synergyWeight,
-  )
+  return {
+    baseWeight,
+    finalWeight: applyFlowParticipationWeight(
+      state,
+      attackingSide,
+      player,
+      synergyWeight,
+    ),
+  }
 }
 
-function getAssistantWeight(
+function getFinisherWeight(
   state: LiveMatchState,
   attackingSide: MatchSide,
   player: Player,
 ): number {
+  return getFinisherWeightBreakdown(
+    state,
+    attackingSide,
+    player,
+  ).finalWeight
+}
+
+function getAssistantWeightBreakdown(
+  state: LiveMatchState,
+  attackingSide: MatchSide,
+  player: Player,
+): WeightBreakdown {
   const vision = getFlowAdjustedAttribute(
     state,
     attackingSide,
@@ -833,12 +1008,27 @@ function getAssistantWeight(
       'offensiveParticipationBonus',
     )
 
-  return applyFlowParticipationWeight(
+  return {
+    baseWeight,
+    finalWeight: applyFlowParticipationWeight(
+      state,
+      attackingSide,
+      player,
+      synergyWeight,
+    ),
+  }
+}
+
+function getAssistantWeight(
+  state: LiveMatchState,
+  attackingSide: MatchSide,
+  player: Player,
+): number {
+  return getAssistantWeightBreakdown(
     state,
     attackingSide,
     player,
-    synergyWeight,
-  )
+  ).finalWeight
 }
 
 function selectFinisher(
@@ -874,42 +1064,111 @@ function selectAssistant(
     : undefined
 }
 
-function getGoalTraitImpactDescription(
+function wasChanceIncreaseDecisive(
+  roll: number,
+  chanceWithoutIncrease: number,
+  finalChance: number,
+): boolean {
+  return (
+    finalChance > chanceWithoutIncrease &&
+    roll >= chanceWithoutIncrease &&
+    roll < finalChance
+  )
+}
+
+function getDecisiveGoalTraitImpactDescription(
   state: LiveMatchState,
   attackingSide: MatchSide,
   eventId: number,
   scorer: Player,
+  conversionRoll: number,
+  finalConversionChance: number,
+  flowAdjustedGoalChance: number,
+  synergyMultiplier: number,
   assistant?: Player,
 ): string | undefined {
   const traitContext = getTraitContext(state, attackingSide)
+  const scorerConversionMultiplier =
+    getTraitModifiers(scorer, traitContext).goalConversionMultiplier
+  const assistantConversionMultiplier = assistant
+    ? getTraitModifiers(
+        assistant,
+        traitContext,
+      ).assistedShotConversionMultiplier
+    : 1
+  const scorerTraitWasDecisive =
+    scorerConversionMultiplier > 1 &&
+    wasChanceIncreaseDecisive(
+      conversionRoll,
+      clamp(
+        flowAdjustedGoalChance *
+          assistantConversionMultiplier *
+          synergyMultiplier,
+        0.04,
+        0.92,
+      ),
+      finalConversionChance,
+    )
+  const assistantTraitWasDecisive =
+    Boolean(assistant) &&
+    assistantConversionMultiplier > 1 &&
+    wasChanceIncreaseDecisive(
+      conversionRoll,
+      clamp(
+        flowAdjustedGoalChance *
+          scorerConversionMultiplier *
+          synergyMultiplier,
+        0.04,
+        0.92,
+      ),
+      finalConversionChance,
+    )
 
   return (
-    (assistant
+    (assistant && assistantTraitWasDecisive
       ? getTraitImpactMessage(
           assistant,
           'assistant',
           eventId,
           traitContext,
+          {
+            force: true,
+          },
         )
       : undefined) ??
-    getTraitImpactMessage(scorer, 'finisher', eventId, traitContext)
+    (scorerTraitWasDecisive
+      ? getTraitImpactMessage(scorer, 'finisher', eventId, traitContext, {
+          force: true,
+        })
+      : undefined)
   )
 }
 
-function getGoalSynergyImpactDescription(
+function getDecisiveGoalSynergyImpactDescription(
   state: LiveMatchState,
   attackingSide: MatchSide,
   eventId: number,
-  assistant?: Player,
+  conversionRoll: number,
+  finalConversionChance: number,
+  chanceWithoutSynergy: number,
 ): string | undefined {
-  const attackingTeam = getTeam(state, attackingSide)
+  if (
+    !wasChanceIncreaseDecisive(
+      conversionRoll,
+      chanceWithoutSynergy,
+      finalConversionChance,
+    )
+  ) {
+    return undefined
+  }
 
-  return (
-    (assistant
-      ? getSynergyImpactMessage(attackingTeam, 'assist', eventId)
-      : undefined) ??
-    getSynergyImpactMessage(attackingTeam, 'goal', eventId) ??
-    getSynergyImpactMessage(attackingTeam, 'finisher', eventId)
+  return getSynergyImpactMessage(
+    getTeam(state, attackingSide),
+    'goal',
+    eventId,
+    {
+      force: true,
+    },
   )
 }
 
@@ -918,6 +1177,7 @@ function createGoalEvent(
   attackingSide: MatchSide,
   scorer: Player,
   assistant?: Player,
+  impactDescriptions: GoalImpactDescriptions = {},
 ): {
   event: MatchEvent
   score: LiveMatchState['score']
@@ -951,19 +1211,8 @@ function createGoalEvent(
       description: assistant
         ? `GOL! ${scorer.name} marcou após assistência de ${assistant.name}.`
         : `GOL! ${scorer.name} resolveu sozinho.`,
-      traitImpactDescription: getGoalTraitImpactDescription(
-        state,
-        attackingSide,
-        eventId,
-        scorer,
-        assistant,
-      ),
-      synergyImpactDescription: getGoalSynergyImpactDescription(
-        state,
-        attackingSide,
-        eventId,
-        assistant,
-      ),
+      traitImpactDescription: impactDescriptions.traitImpactDescription,
+      synergyImpactDescription: impactDescriptions.synergyImpactDescription,
       scoreAfter: score,
     },
     score,
@@ -1025,31 +1274,126 @@ function createFinishingEvent(
     finisher,
     random,
   )
-  const conversionChance = clamp(
-    getBaseGoalConversionChance(eventChances) *
-      getGoalConversionTraitMultiplier(
-        finisher,
-        assistant,
-        getTraitContext(state, attackingSide),
-      ) *
-      getTeamSynergyMultiplier(
-        getTeam(state, attackingSide),
-        'goalConversionBonus',
-      ),
+  const finisherWeight = getFinisherWeightBreakdown(
+    state,
+    attackingSide,
+    finisher,
+  )
+  const assistantWeight = assistant
+    ? getAssistantWeightBreakdown(state, attackingSide, assistant)
+    : undefined
+  const baseGoalChance = getBaseGoalConversionChance(MATCH_CONFIG.eventChance)
+  const flowAdjustedGoalChance = getBaseGoalConversionChance(eventChances)
+  const traitContext = getTraitContext(state, attackingSide)
+  const attackingTeam = getTeam(state, attackingSide)
+  const traitConversionMultiplier = getGoalConversionTraitMultiplier(
+    finisher,
+    assistant,
+    traitContext,
+  )
+  const synergyConversionMultiplier = getTeamSynergyMultiplier(
+    attackingTeam,
+    'goalConversionBonus',
+  )
+  const goalChanceWithoutTrait = clamp(
+    flowAdjustedGoalChance * synergyConversionMultiplier,
     0.04,
     0.92,
   )
-
-  if (random() < conversionChance) {
-    return createGoalEvent(state, attackingSide, finisher, assistant)
+  const goalChanceWithoutSynergy = clamp(
+    flowAdjustedGoalChance * traitConversionMultiplier,
+    0.04,
+    0.92,
+  )
+  const conversionChance = clamp(
+    flowAdjustedGoalChance *
+      traitConversionMultiplier *
+      synergyConversionMultiplier,
+    0.04,
+    0.92,
+  )
+  const conversionRoll = random()
+  const eventId = state.events.length + 1
+  const traitImpactWasDecisive = wasChanceIncreaseDecisive(
+    conversionRoll,
+    goalChanceWithoutTrait,
+    conversionChance,
+  )
+  const synergyImpactWasDecisive = wasChanceIncreaseDecisive(
+    conversionRoll,
+    goalChanceWithoutSynergy,
+    conversionChance,
+  )
+  const traitImpactDescription = getDecisiveGoalTraitImpactDescription(
+    state,
+    attackingSide,
+    eventId,
+    finisher,
+    conversionRoll,
+    conversionChance,
+    flowAdjustedGoalChance,
+    synergyConversionMultiplier,
+    assistant,
+  )
+  const synergyImpactDescription = getDecisiveGoalSynergyImpactDescription(
+    state,
+    attackingSide,
+    eventId,
+    conversionRoll,
+    conversionChance,
+    goalChanceWithoutSynergy,
+  )
+  let finishingEvent: {
+    event: MatchEvent
+    score: LiveMatchState['score']
+    stats: PlayerMatchStats[]
   }
 
-  const shotEvent = createShotEvent(state, attackingSide, finisher)
+  if (conversionRoll < conversionChance) {
+    finishingEvent = createGoalEvent(
+      state,
+      attackingSide,
+      finisher,
+      assistant,
+      {
+        traitImpactDescription,
+        synergyImpactDescription,
+      },
+    )
+  } else {
+    const shotEvent = createShotEvent(state, attackingSide, finisher)
 
-  return {
-    ...shotEvent,
-    score: state.score,
+    finishingEvent = {
+      ...shotEvent,
+      score: state.score,
+    }
   }
+
+  debugLog('event:generated', {
+    attackingSide,
+    finisher: finisher.name,
+    finisherWeight: formatWeightForDebug(finisherWeight),
+    assistant: assistant?.name ?? null,
+    assistantWeight: formatWeightForDebug(assistantWeight),
+    baseGoalChance: Number(baseGoalChance.toFixed(4)),
+    flowAdjustedGoalChance: Number(flowAdjustedGoalChance.toFixed(4)),
+    goalChanceWithoutTrait: Number(goalChanceWithoutTrait.toFixed(4)),
+    goalChanceWithoutSynergy: Number(goalChanceWithoutSynergy.toFixed(4)),
+    finalGoalChance: Number(conversionChance.toFixed(4)),
+    conversionRoll: Number(conversionRoll.toFixed(4)),
+    traitImpactWasDecisive,
+    synergyImpactWasDecisive,
+    traitImpactShown: Boolean(finishingEvent.event.traitImpactDescription),
+    synergyImpactShown: Boolean(finishingEvent.event.synergyImpactDescription),
+    eventGenerated: {
+      type: finishingEvent.event.type,
+      player: finishingEvent.event.playerName,
+      assist: finishingEvent.event.assistPlayerName ?? null,
+      scoreAfter: finishingEvent.event.scoreAfter,
+    },
+  })
+
+  return finishingEvent
 }
 
 function createDefenseEvent(
@@ -1094,6 +1438,47 @@ function createDefenseEvent(
     random,
   )
   const eventId = state.events.length + 1
+  const defenderVision = getFlowAdjustedAttribute(
+    state,
+    defendingSide,
+    defender,
+    'vision',
+  )
+  const defenderBaseWeight = defender.defense * 0.7 + defenderVision * 0.3
+  const defenderFinalWeight = applyFlowParticipationWeight(
+    state,
+    defendingSide,
+    defender,
+    getDefensiveActionTraitWeight(
+      defender,
+      defenderBaseWeight,
+      getTraitContext(state, defendingSide),
+    ) *
+      getPlayerSynergyMultiplier(
+        getTeam(state, defendingSide),
+        defender,
+        'defensiveActionBonus',
+      ),
+  )
+
+  debugLog('event:generated', {
+    attackingSide,
+    finisher: null,
+    finisherWeight: null,
+    assistant: null,
+    baseGoalChance: null,
+    finalGoalChance: null,
+    defender: defender.name,
+    defenderWeight: formatWeightForDebug({
+      baseWeight: defenderBaseWeight,
+      finalWeight: defenderFinalWeight,
+    }),
+    eventGenerated: {
+      type: 'defense',
+      player: defender.name,
+      scoreAfter: { ...state.score },
+    },
+  })
 
   return {
     event: {
@@ -1186,6 +1571,42 @@ export function advanceLiveMatch(
   }
 }
 
+export function forceMatchWinner(
+  state: LiveMatchState,
+  winner: MatchSide,
+): LiveMatchState {
+  if (state.isFinished) {
+    return state
+  }
+
+  const loser = getOppositeSide(winner)
+
+  return {
+    ...state,
+    score: {
+      ...state.score,
+      [winner]: Math.max(state.score[winner], MATCH_CONFIG.targetGoals),
+      [loser]: Math.min(
+        state.score[loser],
+        MATCH_CONFIG.targetGoals - 1,
+      ),
+    },
+    activeFlows: [],
+    isFinished: true,
+    winner,
+  }
+}
+
+export function forceFlowActivation(
+  state: LiveMatchState,
+): LiveMatchState {
+  if (state.isFinished) {
+    return state
+  }
+
+  return tryActivateFlow(state, () => 0) ?? state
+}
+
 function isBetterMvpCandidate(
   candidate: PlayerMatchStats,
   currentBest: PlayerMatchStats,
@@ -1250,7 +1671,8 @@ export function createMatchResult(state: LiveMatchState): MatchResult {
     throw new Error('The match must be finished before creating its result.')
   }
 
-  return {
+  const mvp = selectMatchMvp(state.stats, state.winner)
+  const result = {
     playerTeam: state.playerTeam,
     rivalTeam: state.rivalTeam,
     playerStrength: state.playerStrength,
@@ -1262,8 +1684,51 @@ export function createMatchResult(state: LiveMatchState): MatchResult {
     stats: state.stats,
     flowActivated: state.flowActivated,
     flowActivations: state.flowActivations,
-    mvp: selectMatchMvp(state.stats, state.winner),
+    mvp,
   }
+
+  if (DEBUG_MODE && !loggedMatchResults.has(state)) {
+    loggedMatchResults.add(state)
+    debugLog('match:finished', {
+      score: state.score,
+      winner: state.winner,
+      mvp: {
+        player: mvp.player.name,
+        side: mvp.side,
+        rating: Number(mvp.rating.toFixed(2)),
+        goals: mvp.goals,
+        assists: mvp.assists,
+        shots: mvp.shots,
+        defensiveActions: mvp.defensiveActions,
+        flowActivations: mvp.flowActivations,
+      },
+      finalStats: state.stats.map((playerStats) => ({
+        player: playerStats.player.name,
+        side: playerStats.side,
+        goals: playerStats.goals,
+        assists: playerStats.assists,
+        shots: playerStats.shots,
+        defensiveActions: playerStats.defensiveActions,
+        flowActivations: playerStats.flowActivations,
+        rating: Number(playerStats.rating.toFixed(2)),
+      })),
+      activeSynergies: {
+        player: formatActiveSynergiesForDebug(state.playerTeam),
+        rival: formatActiveSynergiesForDebug(state.rivalTeam),
+      },
+      impactedSynergies: [
+        ...new Set(
+          state.events
+            .map((event) => event.synergyImpactDescription)
+            .filter((description): description is string =>
+              Boolean(description),
+            ),
+        ),
+      ],
+    })
+  }
+
+  return result
 }
 
 export function getNextEventDelay(
