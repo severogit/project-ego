@@ -36,7 +36,7 @@ export const DEBUG_MODE = false
 export const MATCH_CONFIG = {
   targetGoals: 5,
   eventDelay: {
-    base: 1000,
+    base: 2000,
   },
   eventChance: {
     goal: 0.36,

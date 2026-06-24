@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import test from 'node:test'
 import { players } from '../src/data/players.ts'
 import {
@@ -6,6 +7,7 @@ import {
   calculateChoiceImpact,
   drawWeightedPlayers,
 } from '../src/utils/draft.ts'
+import { TRAIT_DEFINITIONS } from '../src/utils/traits.ts'
 
 test('weighted draws approximate the configured rarity distribution', () => {
   const sampleSize = 100_000
@@ -63,6 +65,143 @@ test('choice impact reports positive contribution for displayed attributes', () 
     assert.ok(
       impact.every(({ value }) => value > 0),
       `${player.name} should add at least one point to every displayed attribute`,
+    )
+  }
+})
+
+test('every player trait has a functional trait definition', () => {
+  const playersWithTrait = players.filter((player) => player.trait)
+
+  assert.ok(playersWithTrait.length > 0)
+
+  for (const player of playersWithTrait) {
+    assert.ok(
+      TRAIT_DEFINITIONS[player.trait.name],
+      `${player.name} trait ${player.trait.name} should be registered`,
+    )
+  }
+})
+
+test('updated players expose their configured traits and archetypes', () => {
+  const expectedPlayers = [
+    {
+      id: 3,
+      trait: 'Red Panther',
+      archetypes: ['Sprinter', 'Finisher'],
+    },
+    {
+      id: 4,
+      trait: 'Hero Shot',
+      archetypes: ['Finisher', 'Power'],
+    },
+    {
+      id: 6,
+      trait: 'Chameleon',
+      archetypes: ['Creator', 'Support', 'Technician'],
+    },
+    {
+      id: 10,
+      trait: 'Aerial King',
+      archetypes: ['Defender', 'Finisher'],
+    },
+    {
+      id: 11,
+      trait: 'Monster Physique',
+      archetypes: ['Defender', 'Power'],
+    },
+    {
+      id: 12,
+      trait: 'Ball Hunter',
+      archetypes: ['Visionary', 'Leader'],
+    },
+    {
+      id: 13,
+      trait: 'Shadow Runner',
+      archetypes: ['Sprinter', 'Finisher'],
+    },
+    {
+      id: 14,
+      trait: 'Street Dribbler',
+      archetypes: ['Dribbler', 'Finisher'],
+    },
+    {
+      id: 16,
+      trait: 'Planet Hotline',
+      archetypes: ['Support', 'Playmaker', 'Sprinter'],
+    },
+    {
+      id: 22,
+      trait: 'Hidden Vision',
+      archetypes: ['Visionary', 'Defender'],
+    },
+    {
+      id: 23,
+      trait: 'Acceleration Burst',
+      archetypes: ['Sprinter', 'Finisher'],
+    },
+    {
+      id: 24,
+      trait: 'Duelist',
+      archetypes: ['Defender', 'Power'],
+    },
+    {
+      id: 25,
+      trait: 'Ace Pride',
+      archetypes: ['Finisher', 'Leader'],
+    },
+    {
+      id: 26,
+      trait: 'Zombie Dribble',
+      archetypes: ['Defender', 'Leader', 'Dribbler'],
+    },
+    {
+      id: 27,
+      trait: 'Creative Imp',
+      archetypes: ['Playmaker', 'Genius'],
+    },
+    {
+      id: 28,
+      trait: 'Perfect Striker',
+      archetypes: ['Finisher', 'Genius', 'Star'],
+    },
+    {
+      id: 29,
+      trait: 'Samba Dribble',
+      archetypes: ['Dribbler', 'Genius', 'Creator'],
+    },
+    {
+      id: 30,
+      trait: 'Master Tactician',
+      archetypes: ['Playmaker', 'Leader', 'Genius'],
+    },
+    {
+      id: 31,
+      trait: 'Godspeed',
+      archetypes: ['Sprinter', 'Finisher', 'Star'],
+    },
+    {
+      id: 32,
+      trait: 'Perfect Physique',
+      archetypes: ['Power', 'Finisher', 'Star'],
+    },
+  ]
+
+  for (const expectedPlayer of expectedPlayers) {
+    const player = players.find(
+      (candidate) => candidate.id === expectedPlayer.id,
+    )
+
+    assert.equal(player?.trait?.name, expectedPlayer.trait)
+    assert.deepEqual(player?.archetypes, expectedPlayer.archetypes)
+  }
+})
+
+test('player image paths resolve to public assets', () => {
+  for (const player of players) {
+    assert.ok(player.image, `${player.name} should have an image path`)
+    assert.ok(
+      existsSync(new URL(`../public${player.image}`, import.meta.url)),
+      `${player.name} image path should exist: ${player.image}`,
     )
   }
 })

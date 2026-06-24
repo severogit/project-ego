@@ -83,7 +83,7 @@ export const SYNERGY_DEFINITIONS: Synergy[] = [
     requiredArchetypes: ['Playmaker', 'Egoist'],
     description: 'Criadores alimentam o ego dos finalizadores.',
     effects: {
-      flowChanceBonus: 0.08,
+      flowChanceBonus: 0.1,
     },
   },
   {
@@ -95,12 +95,24 @@ export const SYNERGY_DEFINITIONS: Synergy[] = [
       goalConversionBonus: 0.08,
     },
   },
+  {
+    id: 'creative-chaos',
+    name: 'Creative Chaos',
+    requiredArchetypes: ['Dribbler', 'Creator'],
+    description: 'Drible e criatividade tornam o ataque imprevisivel.',
+    effects: {
+      offensiveParticipationBonus: 0.1,
+      assistChanceBonus: 0.08,
+    },
+  },
 ]
 
 export const UNIQUE_SYNERGY_DEFINITIONS: UniqueSynergy[] = [
   {
     id: 'perfect-duo',
     name: 'Perfect Duo',
+    // TODO: Migrar sinergias unicas para playerSlug no futuro.
+    // Atualmente o sistema utiliza IDs fixos.
     requiredPlayerIds: [5, 6],
     requiredPlayerNames: ['Nagi Seishiro', 'Mikage Reo'],
     description: 'Reo entende perfeitamente o talento de Nagi.',
@@ -152,6 +164,50 @@ export const UNIQUE_SYNERGY_DEFINITIONS: UniqueSynergy[] = [
       offensiveParticipationBonus: 0.1,
     },
   },
+  {
+    id: 'vision-rivals',
+    name: 'Vision Rivals',
+    requiredPlayerIds: [1, 22],
+    requiredPlayerNames: ['Isagi Yoichi', 'Ikki Niko'],
+    description:
+      'Dois leitores de jogo capazes de antecipar qualquer movimento.',
+    effects: {
+      flowChanceBonus: 0.08,
+      defensiveActionBonus: 0.08,
+    },
+  },
+  {
+    id: 'pxg-connection',
+    name: 'PXG Connection',
+    requiredPlayerIds: [31, 27],
+    requiredPlayerNames: ['Julian Loki', 'Charles Chevalier'],
+    description: 'Charles encontra Loki em velocidade maxima.',
+    effects: {
+      assistChanceBonus: 0.15,
+      goalConversionBonus: 0.1,
+    },
+  },
+  {
+    id: 'ubers-system',
+    name: 'Ubers System',
+    requiredPlayerIds: [26, 30],
+    requiredPlayerNames: ['Don Lorenzo', 'Marc Snuffy'],
+    description: 'A estrutura perfeita dos Ubers.',
+    effects: {
+      defensiveActionBonus: 0.15,
+      flowChanceBonus: 0.08,
+    },
+  },
+  {
+    id: 'master-and-successor',
+    name: 'Master and Successor',
+    requiredPlayerIds: [28, 19],
+    requiredPlayerNames: ['Noel Noa', 'Michael Kaiser'],
+    description: 'O melhor atacante do mundo e seu sucessor.',
+    effects: {
+      goalConversionBonus: 0.12,
+    },
+  },
 ]
 
 const EMPTY_EFFECT_TOTALS: SynergyEffectTotals = {
@@ -200,6 +256,10 @@ const impactPhrases: Record<string, Partial<Record<SynergyImpactRole, string>>> 
   'unstoppable-talent': {
     goal: 'Unstoppable Talent aumentou o perigo da jogada.',
   },
+  'creative-chaos': {
+    assist: 'Creative Chaos abriu espacos inesperados.',
+    finisher: 'Creative Chaos desmontou a defesa.',
+  },
   'perfect-duo': {
     goal: 'Perfect Duo encontrou o momento perfeito.',
   },
@@ -218,6 +278,21 @@ const impactPhrases: Record<string, Partial<Record<SynergyImpactRole, string>>> 
   'meta-link': {
     assist: 'Meta Link abriu o caminho do gol.',
     finisher: 'Meta Link acelerou a leitura da jogada.',
+  },
+  'vision-rivals': {
+    flow: 'Vision Rivals elevou a leitura de jogo.',
+    defense: 'Vision Rivals antecipou a jogada.',
+  },
+  'pxg-connection': {
+    assist: 'PXG Connection encontrou um passe impossivel.',
+    goal: 'PXG Connection acelerou a finalizacao.',
+  },
+  'ubers-system': {
+    defense: 'Ubers System fortaleceu a organizacao defensiva.',
+    flow: 'Ubers System aumentou a disciplina tatica.',
+  },
+  'master-and-successor': {
+    goal: 'Master and Successor elevou a eficiencia da finalizacao.',
   },
 }
 
@@ -435,10 +510,18 @@ export function getSynergyImpactMessage(
   players: Player[],
   role: SynergyImpactRole,
   eventId: number,
+  options: { force?: boolean } = {},
 ): string | undefined {
-  const synergy = getAllActiveSynergies(players)
+  const candidates = getAllActiveSynergies(players)
     .filter((synergy) => hasRelevantEffect(synergy, role))
-    .find((synergy) => shouldShowSynergyImpact(synergy, role, eventId))
+    .filter((synergy) => impactPhrases[synergy.id]?.[role])
+    .filter(
+      (synergy) =>
+        options.force || shouldShowSynergyImpact(synergy, role, eventId),
+    )
+  const synergy =
+    candidates.find((candidate) => isUniqueSynergy(candidate)) ??
+    candidates[0]
 
   return synergy ? impactPhrases[synergy.id]?.[role] : undefined
 }

@@ -5,6 +5,8 @@ import {
   advanceLiveMatch,
   calculateTeamMatchStrength,
   createMatchResult,
+  forceFlowActivation,
+  forceMatchWinner,
   getNextEventDelay,
   initializeLiveMatch,
   selectMatchMvp,
@@ -133,6 +135,28 @@ test('event delays respect the selected simulation speed', () => {
   assert.equal(getNextEventDelay(4), 250)
 })
 
+test('dev helper can force the match winner without advancing events', () => {
+  const playerTeam = [createPlayer(1, 80), createPlayer(2, 80)]
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  const state = initializeLiveMatch(playerTeam, rivalTeam, () => 0.99)
+  const forcedState = forceMatchWinner(state, 'player')
+
+  assert.equal(forcedState.isFinished, true)
+  assert.equal(forcedState.winner, 'player')
+  assert.equal(forcedState.score.player, MATCH_CONFIG.targetGoals)
+  assert.equal(forcedState.score.rival, 0)
+  assert.equal(forcedState.events.length, 0)
+})
+
+test('dev helper can force FLOW when a player is eligible', () => {
+  const state = createFlowReadyState()
+  const forcedState = forceFlowActivation(state)
+
+  assert.equal(forcedState.activeFlows.length, 1)
+  assert.equal(forcedState.events.at(-1)?.type, 'flow-activated')
+  assert.equal(forcedState.flowActivations, state.flowActivations + 1)
+})
+
 test('Demon Striker can select Shidou and convert a borderline finish', () => {
   const shidou = createNamedTraitPlayer(
     1,
@@ -150,6 +174,36 @@ test('Demon Striker can select Shidou and convert a borderline finish', () => {
 
   assert.equal(state.events.at(-1)?.type, 'goal')
   assert.equal(state.events.at(-1)?.playerId, shidou.id)
+})
+
+test('Demon Striker impact appears only when it changes goal conversion', () => {
+  const shidou = createNamedTraitPlayer(
+    1,
+    'Shidou Ryusei',
+    'Demon Striker',
+  )
+  const teammate = createPlayer(2, 80)
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([shidou, teammate], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0.55, 0.99, 0.55]),
+  )
+
+  assert.equal(
+    state.events.at(-1)?.traitImpactDescription,
+    'Shidou Ryusei finaliza gracas ao Demon Striker.',
+  )
+
+  state = initializeLiveMatch([shidou, teammate], rivalTeam, () => 0.99)
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0.55, 0.99, 0.4]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'goal')
+  assert.equal(state.events.at(-1)?.traitImpactDescription, undefined)
 })
 
 test('Kaiser Impact can convert a borderline finish', () => {
@@ -228,6 +282,32 @@ test('Killer Pass boosts goal conversion for Playmaker plus Finisher', () => {
 
   assert.equal(state.events.at(-1)?.type, 'goal')
   assert.equal(state.events.at(-1)?.playerId, finisher.id)
+})
+
+test('Killer Pass impact appears only when it changes goal conversion', () => {
+  const finisher = createPlayer(1, 80, 80, undefined, ['Finisher'])
+  const playmaker = createPlayer(2, 80, 80, undefined, ['Playmaker'])
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([finisher, playmaker], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0, 0.99, 0.52]),
+  )
+
+  assert.equal(
+    state.events.at(-1)?.synergyImpactDescription,
+    'Killer Pass ativou uma jogada decisiva.',
+  )
+
+  state = initializeLiveMatch([finisher, playmaker], rivalTeam, () => 0.99)
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0, 0.99, 0.4]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'goal')
+  assert.equal(state.events.at(-1)?.synergyImpactDescription, undefined)
 })
 
 test('Direct Path boosts Finisher selection from Visionary plus Finisher', () => {

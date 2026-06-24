@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import ChampionScreen from '../components/ChampionScreen'
+import DevToolsPanel from '../components/DevToolsPanel'
 import GameEndScreen from '../components/GameEndScreen'
 import LiveMatch from '../components/LiveMatch'
 import PlayerCard from '../components/PlayerCard'
@@ -12,11 +13,20 @@ import { players } from '../data/players'
 import type {
   CampaignVictory,
   GamePhase,
+  KnockoutPhase,
   MatchPhase,
 } from '../types/game'
+import type {
+  LiveMatchDevCommand,
+  LiveMatchDevCommandType,
+} from '../types/devTools'
 import type { MatchResult } from '../types/match'
 import type { Player } from '../types/player'
-import { calculateTeamPower, drawWeightedPlayers } from '../utils/draft'
+import {
+  calculatePlayerPower,
+  calculateTeamPower,
+  drawWeightedPlayers,
+} from '../utils/draft'
 import {
   getPhaseAfterMatch,
   getPhaseAfterRecruit,
@@ -25,6 +35,7 @@ import { generateKnockoutRival } from '../utils/knockout'
 
 const INITIAL_TEAM_SIZE = 3
 const OPTIONS_PER_ROUND = 3
+const FULL_TEAM_SIZE = 5
 
 function isMatchPhase(phase: GamePhase): phase is MatchPhase {
   return (
@@ -36,9 +47,56 @@ function isMatchPhase(phase: GamePhase): phase is MatchPhase {
   )
 }
 
+function getStrongestPlayers(
+  amount: number,
+  excludedIds: number[] = [],
+): Player[] {
+  const excludedPlayers = new Set(excludedIds)
+
+  return [...players]
+    .filter((player) => !excludedPlayers.has(player.id))
+    .sort((firstPlayer, secondPlayer) => {
+      const powerDifference =
+        calculatePlayerPower(secondPlayer) -
+        calculatePlayerPower(firstPlayer)
+
+      return powerDifference || firstPlayer.id - secondPlayer.id
+    })
+    .slice(0, amount)
+}
+
+function completeDevTeam(currentTeam: Player[]): Player[] {
+  const uniqueTeam = currentTeam.filter(
+    (player, index, team) =>
+      team.findIndex((teamPlayer) => teamPlayer.id === player.id) === index,
+  )
+  const lockedPlayers = uniqueTeam.slice(0, FULL_TEAM_SIZE)
+  const fillPlayers = getStrongestPlayers(
+    FULL_TEAM_SIZE - lockedPlayers.length,
+    lockedPlayers.map((player) => player.id),
+  )
+
+  return [...lockedPlayers, ...fillPlayers]
+}
+
+function getCampaignBeforeDevPhase(
+  phase: KnockoutPhase,
+): CampaignVictory[] {
+  if (phase === 'knockout-final') {
+    return ['knockout-quarter', 'knockout-semi']
+  }
+
+  if (phase === 'knockout-semi') {
+    return ['knockout-quarter']
+  }
+
+  return []
+}
+
 function DraftPage() {
   const matchLockedRef = useRef(false)
   const recruitLockedRef = useRef(false)
+  const devCommandIdRef = useRef(0)
   const [phase, setPhase] = useState<GamePhase>('draft')
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([])
   const [currentOptions, setCurrentOptions] = useState<Player[]>(() =>
@@ -55,6 +113,8 @@ function DraftPage() {
   const [isMatchRunning, setIsMatchRunning] = useState(false)
   const [eliminatedAt, setEliminatedAt] = useState<MatchPhase | null>(null)
   const [campaign, setCampaign] = useState<CampaignVictory[]>([])
+  const [liveMatchDevCommand, setLiveMatchDevCommand] =
+    useState<LiveMatchDevCommand>()
 
   const selectedPlayerIds = selectedPlayers.map((player) => player.id)
   const availablePlayers = players.filter(
@@ -243,6 +303,71 @@ function DraftPage() {
     setIsMatchRunning(false)
     setEliminatedAt(null)
     setCampaign([])
+    setLiveMatchDevCommand(undefined)
+  }
+
+  function resetDevFlowState() {
+    matchLockedRef.current = false
+    recruitLockedRef.current = false
+    setMatchResult(null)
+    setIsMatchRunning(false)
+    setEliminatedAt(null)
+    setLiveMatchDevCommand(undefined)
+  }
+
+  function handleDevLiveMatchCommand(type: LiveMatchDevCommandType) {
+    if (!isMatchPhase(phase) || !isMatchRunning) {
+      return
+    }
+
+    devCommandIdRef.current += 1
+    setLiveMatchDevCommand({
+      id: devCommandIdRef.current,
+      type,
+    })
+  }
+
+  function handleDevSkipToFullTeam() {
+    const devTeam = completeDevTeam(selectedPlayers)
+
+    resetDevFlowState()
+    setSelectedPlayers(devTeam)
+    setCurrentRound(INITIAL_TEAM_SIZE)
+    setIsRolling(false)
+    setRivalTeam([])
+    setUsedRivalPlayerIds([])
+    setKnockoutRivalSignatures([])
+    setCampaign([])
+    setPhase('team-complete')
+  }
+
+  function handleDevGenerateStrongTeam() {
+    const devTeam = getStrongestPlayers(FULL_TEAM_SIZE)
+
+    resetDevFlowState()
+    setSelectedPlayers(devTeam)
+    setCurrentRound(INITIAL_TEAM_SIZE)
+    setIsRolling(false)
+    setRivalTeam([])
+    setUsedRivalPlayerIds([])
+    setKnockoutRivalSignatures([])
+    setCampaign([])
+    setPhase('team-complete')
+  }
+
+  function handleDevJumpToKnockout(nextPhase: KnockoutPhase) {
+    const devTeam = completeDevTeam(selectedPlayers)
+    const nextRival = generateKnockoutRival(players, devTeam, nextPhase)
+
+    resetDevFlowState()
+    setSelectedPlayers(devTeam)
+    setCurrentRound(INITIAL_TEAM_SIZE)
+    setIsRolling(false)
+    setRivalTeam(nextRival.team)
+    setUsedRivalPlayerIds(nextRival.team.map((player) => player.id))
+    setKnockoutRivalSignatures([nextRival.signature])
+    setCampaign(getCampaignBeforeDevPhase(nextPhase))
+    setPhase(nextPhase)
   }
 
   function renderDraft() {
@@ -332,6 +457,7 @@ function DraftPage() {
             rivalTeam={rivalTeam}
             phase={phase}
             onComplete={handleMatchComplete}
+            devCommand={liveMatchDevCommand}
           />
         )
       }
@@ -405,6 +531,21 @@ function DraftPage() {
       </div>
 
       {renderCurrentPhase()}
+      <DevToolsPanel
+        phase={phase}
+        teamSize={selectedPlayers.length}
+        isMatchRunning={isMatchPhase(phase) && isMatchRunning}
+        onForceVictory={() =>
+          handleDevLiveMatchCommand('force-player-win')
+        }
+        onForceDefeat={() => handleDevLiveMatchCommand('force-rival-win')}
+        onSkipToFullTeam={handleDevSkipToFullTeam}
+        onJumpToKnockout={handleDevJumpToKnockout}
+        onGenerateStrongTeam={handleDevGenerateStrongTeam}
+        onForceFlowNext={() =>
+          handleDevLiveMatchCommand('force-flow-next')
+        }
+      />
     </main>
   )
 }
