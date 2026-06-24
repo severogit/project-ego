@@ -10,6 +10,7 @@ import type {
 import type { Player } from '../types/player'
 import { calculateTeamPower } from './draft.ts'
 import {
+  getPlayerSynergyMultiplier,
   getSynergyImpactMessage,
   getTeamSynergyBonus,
   getTeamSynergyMultiplier,
@@ -782,16 +783,17 @@ function getFinisherWeight(
     getTraitContext(state, attackingSide),
   )
   const attackingTeam = getTeam(state, attackingSide)
-  const finisherSelectionMultiplier = player.archetypes?.includes('Finisher')
-    ? getTeamSynergyMultiplier(attackingTeam, 'finisherSelectionBonus')
-    : 1
   const synergyWeight =
     traitWeight *
     getTeamSynergyMultiplier(
       attackingTeam,
       'offensiveParticipationBonus',
     ) *
-    finisherSelectionMultiplier
+    getPlayerSynergyMultiplier(
+      attackingTeam,
+      player,
+      'finisherSelectionBonus',
+    )
 
   return applyFlowParticipationWeight(
     state,
@@ -898,10 +900,14 @@ function getGoalSynergyImpactDescription(
   state: LiveMatchState,
   attackingSide: MatchSide,
   eventId: number,
+  assistant?: Player,
 ): string | undefined {
   const attackingTeam = getTeam(state, attackingSide)
 
   return (
+    (assistant
+      ? getSynergyImpactMessage(attackingTeam, 'assist', eventId)
+      : undefined) ??
     getSynergyImpactMessage(attackingTeam, 'goal', eventId) ??
     getSynergyImpactMessage(attackingTeam, 'finisher', eventId)
   )
@@ -956,6 +962,7 @@ function createGoalEvent(
         state,
         attackingSide,
         eventId,
+        assistant,
       ),
       scoreAfter: score,
     },
@@ -1071,12 +1078,11 @@ function createDefenseEvent(
       )
       const synergyWeight =
         traitWeight *
-        (player.archetypes?.includes('Defender')
-          ? getTeamSynergyMultiplier(
-              getTeam(state, defendingSide),
-              'defensiveActionBonus',
-            )
-          : 1)
+        getPlayerSynergyMultiplier(
+          getTeam(state, defendingSide),
+          player,
+          'defensiveActionBonus',
+        )
 
       return applyFlowParticipationWeight(
         state,

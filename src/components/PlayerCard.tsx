@@ -5,6 +5,12 @@ import {
   playerAttributes,
   type PlayerAttribute,
 } from '../utils/draft'
+import {
+  getNewSynergiesIfPlayerAdded,
+  getSynergyEffectSummary,
+  type Synergy,
+  type UniqueSynergy,
+} from '../utils/synergies'
 import PlayerImage from './PlayerImage'
 
 interface PlayerCardProps {
@@ -45,6 +51,14 @@ function getChoiceImpact(team: Player[] | undefined, player: Player) {
   )
 }
 
+function getChoiceSynergyPreview(team: Player[] | undefined, player: Player) {
+  if (!team) {
+    return undefined
+  }
+
+  return getNewSynergiesIfPlayerAdded(team, player)
+}
+
 function formatImpact(value: number): string {
   return value > 0 ? `+${value}` : `${value}`
 }
@@ -63,6 +77,7 @@ function PlayerCard({
   comparisonTeam,
 }: PlayerCardProps) {
   const choiceImpact = getChoiceImpact(comparisonTeam, player)
+  const synergyPreview = getChoiceSynergyPreview(comparisonTeam, player)
 
   return (
     <button
@@ -164,6 +179,18 @@ function PlayerCard({
           </div>
         )}
 
+        {synergyPreview && (
+          <div className="mt-5 border border-cyan-300/15 bg-cyan-300/[0.04] p-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
+              Sinergias ativadas ao escolher
+            </p>
+            <SynergyPreviewList
+              archetypeSynergies={synergyPreview.archetypeSynergies}
+              uniqueSynergies={synergyPreview.uniqueSynergies}
+            />
+          </div>
+        )}
+
         <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
           <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
             Poder
@@ -174,6 +201,71 @@ function PlayerCard({
         </div>
       </div>
     </button>
+  )
+}
+
+function SynergyPreviewList({
+  archetypeSynergies,
+  uniqueSynergies,
+}: {
+  archetypeSynergies: Synergy[]
+  uniqueSynergies: UniqueSynergy[]
+}) {
+  const hasNewSynergies =
+    archetypeSynergies.length > 0 || uniqueSynergies.length > 0
+
+  if (!hasNewSynergies) {
+    return (
+      <p className="mt-2 text-xs font-bold uppercase tracking-wider text-zinc-600">
+        Nenhuma nova sinergia.
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-3 grid gap-2">
+      {archetypeSynergies.map((synergy) => (
+        <SynergyPreviewItem
+          key={synergy.id}
+          synergy={synergy}
+          typeLabel="Arquetipo"
+        />
+      ))}
+      {uniqueSynergies.map((synergy) => (
+        <SynergyPreviewItem
+          key={synergy.id}
+          synergy={synergy}
+          typeLabel="Unica"
+        />
+      ))}
+    </div>
+  )
+}
+
+function SynergyPreviewItem({
+  synergy,
+  typeLabel,
+}: {
+  synergy: Synergy | UniqueSynergy
+  typeLabel: string
+}) {
+  return (
+    <article className="border border-white/10 bg-black/20 p-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-xs font-black uppercase italic text-white">
+          {synergy.name}
+        </h3>
+        <span className="text-[9px] font-black uppercase tracking-wider text-cyan-200">
+          {typeLabel}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+        {synergy.description}
+      </p>
+      <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-cyan-200/80">
+        {getSynergyEffectSummary(synergy)}
+      </p>
+    </article>
   )
 }
 

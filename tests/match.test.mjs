@@ -270,6 +270,37 @@ test('Defensive Command boosts Defender defensive selection', () => {
   assert.equal(state.events.at(-1)?.playerId, leaderDefender.id)
 })
 
+test('Perfect Duo boosts Nagi and Reo goal conversion', () => {
+  const nagi = createPlayer(5, 80, 80, undefined, ['Finisher'])
+  const reo = createPlayer(6, 80)
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([nagi, reo], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0, 0.99, 0.54]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'goal')
+  assert.equal(state.events.at(-1)?.playerId, nagi.id)
+})
+
+test('Chemical Reaction boosts Shidou conversion and Sae assist chance', () => {
+  const shidou = createPlayer(9, 80, 80, undefined, ['Finisher'])
+  const sae = createPlayer(18, 80, 80, undefined, ['Playmaker'])
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([shidou, sae], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0, 0.8, 0, 0.56]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'goal')
+  assert.equal(state.events.at(-1)?.playerId, shidou.id)
+  assert.equal(state.events.at(-1)?.assistPlayerId, sae.id)
+})
+
 test('match MVP tie-breaker prioritizes the winning team after rating', () => {
   const winnerStats = createStats({
     id: 1,
@@ -472,14 +503,14 @@ test('a match ends only when one side reaches five goals', () => {
 
 test('the favorite wins most matches without reaching a 100% win rate', () => {
   const strongerTeam = [
-    createPlayer(1, 90),
-    createPlayer(2, 90),
-    createPlayer(3, 90),
+    createPlayer(101, 90),
+    createPlayer(102, 90),
+    createPlayer(103, 90),
   ]
   const weakerTeam = [
-    createPlayer(4, 80),
-    createPlayer(5, 80),
-    createPlayer(6, 80),
+    createPlayer(201, 80),
+    createPlayer(202, 80),
+    createPlayer(203, 80),
   ]
   const random = seededRandom(123456789)
   const simulations = 5_000
