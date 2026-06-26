@@ -360,6 +360,105 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
         `${player.name} segurou no fisico com Perfect Physique.`,
     },
   },
+  "Two-Footed Support": {
+    summary: "Two-Footed Support: + apoio",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.04,
+      assistWeightMultiplier: 1.08,
+    },
+    phrases: {
+      assistant: (player) => `${player.name} apoiou com Two-Footed Support.`,
+    },
+  },
+  "Survival Instinct": {
+    summary: "Survival Instinct: + recuperacao",
+    modifiers: {
+      defensiveActionWeightMultiplier: 1.04,
+      flowChanceMultiplier: 1.02,
+    },
+    phrases: {
+      defender: (player) => `${player.name} resistiu com Survival Instinct.`,
+    },
+  },
+  "Quick Man Mark": {
+    summary: "Quick Man Mark: + marcacao",
+    modifiers: {
+      defensiveActionWeightMultiplier: 1.1,
+    },
+    phrases: {
+      defender: (player) => `${player.name} fecha a jogada com Quick Man Mark.`,
+    },
+  },
+  "Steady Balance": {
+    summary: "Steady Balance: + equilibrio",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.04,
+      defensiveActionWeightMultiplier: 1.04,
+    },
+    phrases: {
+      finisher: (player) => `${player.name} aparece com Steady Balance.`,
+      defender: (player) => `${player.name} cobre o espaco com Steady Balance.`,
+    },
+  },
+  "Patient Read": {
+    summary: "Patient Read: + leitura",
+    modifiers: {
+      assistWeightMultiplier: 1.06,
+      defensiveActionWeightMultiplier: 1.06,
+    },
+    phrases: {
+      assistant: (player) => `${player.name} espera a leitura com Patient Read.`,
+      defender: (player) => `${player.name} antecipa com Patient Read.`,
+    },
+  },
+  "Body Check": {
+    summary: "Body Check: + duelos",
+    modifiers: {
+      defensiveActionWeightMultiplier: 1.08,
+    },
+    phrases: {
+      defender: (player) => `${player.name} vence o contato com Body Check.`,
+    },
+  },
+  "Link Support": {
+    summary: "Link Support: + assistencias",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.05,
+      assistWeightMultiplier: 1.05,
+    },
+    phrases: {
+      assistant: (player) => `${player.name} conecta a jogada com Link Support.`,
+    },
+  },
+  "Tight Mark": {
+    summary: "Tight Mark: + marcacao",
+    modifiers: {
+      defensiveActionWeightMultiplier: 1.09,
+    },
+    phrases: {
+      defender: (player) => `${player.name} gruda na marcacao com Tight Mark.`,
+    },
+  },
+  "Quiet Technique": {
+    summary: "Quiet Technique: + tecnica",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.05,
+      shotWeightMultiplier: 1.04,
+    },
+    phrases: {
+      finisher: (player) => `${player.name} finaliza com Quiet Technique.`,
+    },
+  },
+  "Off-Ball Run": {
+    summary: "Off-Ball Run: + movimentacao",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.08,
+      shotWeightMultiplier: 1.05,
+    },
+    phrases: {
+      finisher: (player) => `${player.name} ataca o espaco com Off-Ball Run.`,
+    },
+  },
   Destroyer: {
     summary: "Destroyer: + ataque e defesa",
     modifiers: {
