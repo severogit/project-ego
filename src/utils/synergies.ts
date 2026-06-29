@@ -20,6 +20,7 @@ export interface UniqueSynergy {
   name: string
   requiredPlayerIds: number[]
   requiredPlayerNames: string[]
+  minimumRequiredPlayerCount?: number
   description: string
   effects: Synergy['effects']
 }
@@ -71,10 +72,77 @@ export const SYNERGY_DEFINITIONS: Synergy[] = [
   {
     id: 'defensive-command',
     name: 'Defensive Command',
-    requiredArchetypes: ['Defender', 'Leader'],
-    description: 'Lideres defensivos organizam melhor a marcacao.',
+    requiredArchetypes: ['Leader', 'Goalkeeper'],
+    description: 'Goleiros e lideres organizam melhor a marcacao.',
     effects: {
       defensiveActionBonus: 0.15,
+    },
+  },
+  {
+    id: 'iron-wall',
+    name: 'Iron Wall',
+    requiredArchetypes: ['Defender', 'Reactive'],
+    description: 'Uma dupla solida dificulta qualquer avanco adversario.',
+    effects: {
+      defensiveActionBonus: 0.18,
+    },
+  },
+  {
+    id: 'last-line',
+    name: 'Last Line',
+    requiredArchetypes: ['Goalkeeper', 'Visionary'],
+    description: 'A ultima linha defensiva le e organiza o jogo.',
+    effects: {
+      defensiveActionBonus: 0.2,
+    },
+  },
+  {
+    id: 'counter-press',
+    name: 'Counter Press',
+    requiredArchetypes: ['Leader', 'Power'],
+    description: 'Pressao fisica organizada recupera rapidamente a posse.',
+    effects: {
+      defensiveActionBonus: 0.15,
+      flowChanceBonus: 0.05,
+    },
+  },
+  {
+    id: 'lockdown',
+    name: 'Lockdown',
+    requiredArchetypes: ['Visionary', 'Reactive'],
+    description: 'Leitura de jogo transforma antecipacao em roubadas de bola.',
+    effects: {
+      defensiveActionBonus: 0.12,
+    },
+  },
+  {
+    id: 'physical-fortress',
+    name: 'Physical Fortress',
+    requiredArchetypes: ['Power', 'Goalkeeper'],
+    description: 'Superioridade fisica protege a ultima linha.',
+    effects: {
+      defensiveActionBonus: 0.18,
+    },
+  },
+  {
+    id: 'press-machine',
+    name: 'Press Machine',
+    requiredArchetypes: ['Leader', 'Sprinter'],
+    description: 'Pressao coordenada forca erros constantes.',
+    effects: {
+      defensiveActionBonus: 0.15,
+      flowChanceBonus: 0.08,
+    },
+  },
+  {
+    id: 'complete-team',
+    name: 'Complete Team',
+    requiredArchetypes: ['Finisher', 'Playmaker', 'Defender'],
+    description: 'Uma equipe equilibrada funciona em todas as fases do jogo.',
+    effects: {
+      goalConversionBonus: 0.05,
+      assistChanceBonus: 0.05,
+      defensiveActionBonus: 0.08,
     },
   },
   {
@@ -117,7 +185,7 @@ export const UNIQUE_SYNERGY_DEFINITIONS: UniqueSynergy[] = [
     requiredPlayerNames: ['Nagi Seishiro', 'Mikage Reo'],
     description: 'Reo entende perfeitamente o talento de Nagi.',
     effects: {
-      goalConversionBonus: 0.15,
+      goalConversionBonus: 0.21,
     },
   },
   {
@@ -149,8 +217,8 @@ export const UNIQUE_SYNERGY_DEFINITIONS: UniqueSynergy[] = [
     requiredPlayerNames: ['Rin Itoshi', 'Itoshi Sae'],
     description: 'Talento absurdo correndo no mesmo sangue.',
     effects: {
-      offensiveParticipationBonus: 0.12,
-      flowChanceBonus: 0.12,
+      offensiveParticipationBonus: 0.14,
+      flowChanceBonus: 0.14,
     },
   },
   {
@@ -208,6 +276,67 @@ export const UNIQUE_SYNERGY_DEFINITIONS: UniqueSynergy[] = [
       goalConversionBonus: 0.12,
     },
   },
+  {
+    id: 'world-five',
+    name: 'World Five',
+    requiredPlayerIds: [43, 44, 31, 45, 46],
+    requiredPlayerNames: [
+      'Adam Blake',
+      'Dada Silva',
+      'Julian Loki',
+      'Leonardo Luna',
+      'Pablo Cavasoz',
+    ],
+    description: 'A elite mundial pressiona em bloco e acelera o jogo final.',
+    effects: {
+      goalConversionBonus: 0.1,
+      offensiveParticipationBonus: 0.08,
+      assistChanceBonus: 0.08,
+      flowChanceBonus: 0.12,
+    },
+  },
+  {
+    id: 'global-elite',
+    name: 'Global Elite',
+    requiredPlayerIds: [43, 44, 31, 45, 46],
+    requiredPlayerNames: [
+      'Adam Blake',
+      'Dada Silva',
+      'Julian Loki',
+      'Leonardo Luna',
+      'Pablo Cavasoz',
+    ],
+    minimumRequiredPlayerCount: 3,
+    description: 'Tres nomes da elite global ja elevam o ritmo ofensivo.',
+    effects: {
+      offensiveParticipationBonus: 0.08,
+      goalConversionBonus: 0.06,
+    },
+  },
+  {
+    id: 'speed-and-technique',
+    name: 'Speed and Technique',
+    requiredPlayerIds: [31, 45, 46],
+    requiredPlayerNames: ['Julian Loki', 'Leonardo Luna', 'Pablo Cavasoz'],
+    description: 'Velocidade e tecnica quebram linhas em poucos toques.',
+    effects: {
+      assistChanceBonus: 0.12,
+      offensiveParticipationBonus: 0.08,
+      flowChanceBonus: 0.06,
+    },
+  },
+  {
+    id: 'physical-pressure',
+    name: 'Physical Pressure',
+    requiredPlayerIds: [43, 44],
+    requiredPlayerNames: ['Adam Blake', 'Dada Silva'],
+    description: 'Forca fisica transforma pressao em finalizacoes perigosas.',
+    effects: {
+      goalConversionBonus: 0.08,
+      finisherSelectionBonus: 0.08,
+      defensiveActionBonus: 0.08,
+    },
+  },
 ]
 
 const EMPTY_EFFECT_TOTALS: SynergyEffectTotals = {
@@ -249,6 +378,31 @@ const impactPhrases: Record<string, Partial<Record<SynergyImpactRole, string>>> 
   },
   'defensive-command': {
     defense: 'Defensive Command fortaleceu a marcacao.',
+  },
+  'iron-wall': {
+    defense: 'Iron Wall fechou o caminho do ataque.',
+  },
+  'last-line': {
+    defense: 'Last Line protegeu a area.',
+  },
+  'counter-press': {
+    defense: 'Counter Press recuperou a posse rapidamente.',
+    flow: 'Counter Press elevou a intensidade da marcacao.',
+  },
+  lockdown: {
+    defense: 'Lockdown antecipou a jogada.',
+  },
+  'physical-fortress': {
+    defense: 'Physical Fortress venceu o duelo defensivo.',
+  },
+  'press-machine': {
+    defense: 'Press Machine forcou o erro adversario.',
+    flow: 'Press Machine aumentou a pressao em campo.',
+  },
+  'complete-team': {
+    goal: 'Complete Team equilibrou a jogada decisiva.',
+    assist: 'Complete Team conectou criacao e finalizacao.',
+    defense: 'Complete Team protegeu a transicao defensiva.',
   },
   'ego-trigger': {
     flow: 'Ego Trigger elevou a chance de FLOW.',
@@ -294,6 +448,25 @@ const impactPhrases: Record<string, Partial<Record<SynergyImpactRole, string>>> 
   'master-and-successor': {
     goal: 'Master and Successor elevou a eficiencia da finalizacao.',
   },
+  'world-five': {
+    goal: 'World Five executou uma acao de elite global.',
+    assist: 'World Five conectou tecnica e velocidade.',
+    flow: 'World Five elevou a pressao do confronto final.',
+  },
+  'global-elite': {
+    goal: 'Global Elite aumentou a eficiencia ofensiva.',
+    finisher: 'Global Elite acelerou a escolha do finalizador.',
+  },
+  'speed-and-technique': {
+    assist: 'Speed and Technique desmontou a marcacao.',
+    finisher: 'Speed and Technique criou uma finalizacao limpa.',
+    flow: 'Speed and Technique aumentou o ritmo da elite.',
+  },
+  'physical-pressure': {
+    goal: 'Physical Pressure empurrou a jogada para a area.',
+    finisher: 'Physical Pressure abriu caminho para o chute.',
+    defense: 'Physical Pressure venceu o duelo fisico.',
+  },
 }
 
 export function getActiveSynergies(players: Player[]): Synergy[] {
@@ -330,9 +503,12 @@ export function getActiveUniqueSynergies(
       return false
     }
 
-    const isActive = synergy.requiredPlayerIds.every((playerId) =>
+    const requiredPlayerCount =
+      synergy.minimumRequiredPlayerCount ?? synergy.requiredPlayerIds.length
+    const matchedPlayerCount = synergy.requiredPlayerIds.filter((playerId) =>
       playerIds.has(playerId),
-    )
+    ).length
+    const isActive = matchedPlayerCount >= requiredPlayerCount
 
     if (isActive) {
       activeSynergyIds.add(synergy.id)

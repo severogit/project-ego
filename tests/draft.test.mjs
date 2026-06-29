@@ -130,6 +130,11 @@ test('updated players expose their configured traits and archetypes', () => {
       archetypes: ['Support', 'Playmaker', 'Sprinter'],
     },
     {
+      id: 17,
+      trait: 'Wild Reflexes',
+      archetypes: ['Defender', 'Reactive', 'Goalkeeper'],
+    },
+    {
       id: 22,
       trait: 'Hidden Vision',
       archetypes: ['Visionary', 'Defender'],
@@ -183,6 +188,32 @@ test('updated players expose their configured traits and archetypes', () => {
       id: 32,
       trait: 'Perfect Physique',
       archetypes: ['Power', 'Finisher', 'Star'],
+    },
+    {
+      id: 43,
+      trait: 'Power Striker',
+      archetypes: ['Finisher', 'Striker', 'Power', 'Egoist'],
+    },
+    {
+      id: 44,
+      trait: 'Physical Domination',
+      archetypes: ['Power', 'Duelist', 'Defender', 'Pressure'],
+    },
+    {
+      id: 45,
+      trait: 'Elegant Control',
+      archetypes: ['Playmaker', 'Dribbler', 'Technician', 'Support'],
+    },
+    {
+      id: 46,
+      trait: 'Agile Creator',
+      archetypes: [
+        'Speedster',
+        'Sprinter',
+        'Dribbler',
+        'Playmaker',
+        'Support',
+      ],
     },
   ]
 

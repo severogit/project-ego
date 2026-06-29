@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from 'react'
-import ChampionScreen from '../components/ChampionScreen'
 import DevToolsPanel from '../components/DevToolsPanel'
 import GameEndScreen from '../components/GameEndScreen'
 import LiveMatch from '../components/LiveMatch'
@@ -9,9 +8,10 @@ import Roulette from '../components/Roulette'
 import TeamCompleteScreen from '../components/TeamCompleteScreen'
 import TeamStatusPanel from '../components/TeamStatusPanel'
 import TeamSummary from '../components/TeamSummary'
+import WorldFiveChampionScreen from '../components/WorldFiveChampionScreen'
+import WorldFiveTransitionScreen from '../components/WorldFiveTransitionScreen'
 import { players } from '../data/players'
 import type {
-  CampaignVictory,
   GamePhase,
   KnockoutPhase,
   MatchPhase,
@@ -32,15 +32,32 @@ import {
   getPhaseAfterRecruit,
 } from '../utils/gameFlow'
 import { generateKnockoutRival } from '../utils/knockout'
+import {
+  getWorldFiveChallengePlayerPool,
+  getWorldFiveTeam,
+} from '../utils/worldFiveChallenge'
 
 const INITIAL_TEAM_SIZE = 3
 const OPTIONS_PER_ROUND = 3
 const FULL_TEAM_SIZE = 5
+const campaignPlayerPool = getWorldFiveChallengePlayerPool(players)
 
 function isMatchPhase(phase: GamePhase): phase is MatchPhase {
   return (
     phase === 'match-3v3' ||
     phase === 'match-4v4' ||
+    phase === 'match-5v5' ||
+    phase === 'knockout-round-of-16' ||
+    phase === 'knockout-quarter' ||
+    phase === 'knockout-semi' ||
+    phase === 'knockout-final' ||
+    phase === 'world-five'
+  )
+}
+
+function isKnockoutPhase(phase: GamePhase): phase is KnockoutPhase {
+  return (
+    phase === 'knockout-round-of-16' ||
     phase === 'knockout-quarter' ||
     phase === 'knockout-semi' ||
     phase === 'knockout-final'
@@ -53,7 +70,7 @@ function getStrongestPlayers(
 ): Player[] {
   const excludedPlayers = new Set(excludedIds)
 
-  return [...players]
+  return [...campaignPlayerPool]
     .filter((player) => !excludedPlayers.has(player.id))
     .sort((firstPlayer, secondPlayer) => {
       const powerDifference =
@@ -79,20 +96,6 @@ function completeDevTeam(currentTeam: Player[]): Player[] {
   return [...lockedPlayers, ...fillPlayers]
 }
 
-function getCampaignBeforeDevPhase(
-  phase: KnockoutPhase,
-): CampaignVictory[] {
-  if (phase === 'knockout-final') {
-    return ['knockout-quarter', 'knockout-semi']
-  }
-
-  if (phase === 'knockout-semi') {
-    return ['knockout-quarter']
-  }
-
-  return []
-}
-
 function DraftPage() {
   const matchLockedRef = useRef(false)
   const recruitLockedRef = useRef(false)
@@ -100,7 +103,7 @@ function DraftPage() {
   const [phase, setPhase] = useState<GamePhase>('draft')
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([])
   const [currentOptions, setCurrentOptions] = useState<Player[]>(() =>
-    drawWeightedPlayers(players, OPTIONS_PER_ROUND),
+    drawWeightedPlayers(campaignPlayerPool, OPTIONS_PER_ROUND),
   )
   const [isRolling, setIsRolling] = useState(true)
   const [currentRound, setCurrentRound] = useState(1)
@@ -112,12 +115,12 @@ function DraftPage() {
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
   const [isMatchRunning, setIsMatchRunning] = useState(false)
   const [eliminatedAt, setEliminatedAt] = useState<MatchPhase | null>(null)
-  const [campaign, setCampaign] = useState<CampaignVictory[]>([])
+  const [campaignResults, setCampaignResults] = useState<MatchResult[]>([])
   const [liveMatchDevCommand, setLiveMatchDevCommand] =
     useState<LiveMatchDevCommand>()
 
   const selectedPlayerIds = selectedPlayers.map((player) => player.id)
-  const availablePlayers = players.filter(
+  const availablePlayers = campaignPlayerPool.filter(
     (player) => !selectedPlayerIds.includes(player.id),
   )
 
@@ -140,7 +143,7 @@ function DraftPage() {
     if (updatedTeam.length < INITIAL_TEAM_SIZE) {
       setCurrentOptions(
         drawWeightedPlayers(
-          players,
+          campaignPlayerPool,
           OPTIONS_PER_ROUND,
           updatedTeam.map((selectedPlayer) => selectedPlayer.id),
         ),
@@ -151,7 +154,7 @@ function DraftPage() {
     }
 
     const firstRival = drawWeightedPlayers(
-      players,
+      campaignPlayerPool,
       INITIAL_TEAM_SIZE,
       updatedTeam.map((selectedPlayer) => selectedPlayer.id),
     )
@@ -186,19 +189,20 @@ function DraftPage() {
       return
     }
 
-    setCampaign((currentCampaign) => [...currentCampaign, phase])
+    const nextCampaignResults = [...campaignResults, result]
+    setCampaignResults(nextCampaignResults)
     const nextPhase = getPhaseAfterMatch(phase, result.winner)
 
-    if (
-      nextPhase === 'knockout-semi' ||
-      nextPhase === 'knockout-final'
-    ) {
+    if (isKnockoutPhase(nextPhase)) {
+      const shouldContinueKnockoutProgression = isKnockoutPhase(phase)
       const nextRival = generateKnockoutRival(
-        players,
+        campaignPlayerPool,
         selectedPlayers,
         nextPhase,
-        calculateTeamPower(rivalTeam),
-        knockoutRivalSignatures,
+        shouldContinueKnockoutProgression
+          ? calculateTeamPower(rivalTeam)
+          : 0,
+        shouldContinueKnockoutProgression ? knockoutRivalSignatures : [],
       )
 
       setRivalTeam(nextRival.team)
@@ -209,6 +213,19 @@ function DraftPage() {
       setMatchResult(null)
       setIsMatchRunning(false)
       matchLockedRef.current = false
+      setPhase(nextPhase)
+      return
+    }
+
+    if (nextPhase === 'world-five-transition') {
+      setRivalTeam([])
+      setMatchResult(null)
+      matchLockedRef.current = false
+      setPhase(nextPhase)
+      return
+    }
+
+    if (nextPhase === 'world-five-champion') {
       setPhase(nextPhase)
       return
     }
@@ -242,15 +259,8 @@ function DraftPage() {
 
     setSelectedPlayers(updatedTeam)
 
-    if (nextPhase === 'team-complete') {
-      setRivalTeam([])
-      setMatchResult(null)
-      setPhase(nextPhase)
-      return
-    }
-
     const nextRival = drawWeightedPlayers(
-      players,
+      campaignPlayerPool,
       updatedTeam.length,
       [
         ...updatedTeam.map((teamPlayer) => teamPlayer.id),
@@ -274,18 +284,30 @@ function DraftPage() {
       return
     }
 
-    const quarterRival = generateKnockoutRival(
-      players,
+    const roundOf16Rival = generateKnockoutRival(
+      campaignPlayerPool,
       selectedPlayers,
-      'knockout-quarter',
+      'knockout-round-of-16',
     )
 
-    setRivalTeam(quarterRival.team)
-    setKnockoutRivalSignatures([quarterRival.signature])
+    setRivalTeam(roundOf16Rival.team)
+    setKnockoutRivalSignatures([roundOf16Rival.signature])
     setMatchResult(null)
     setIsMatchRunning(false)
     matchLockedRef.current = false
-    setPhase('knockout-quarter')
+    setPhase('knockout-round-of-16')
+  }
+
+  function handleChallengeWorldFive() {
+    if (phase !== 'world-five-transition') {
+      return
+    }
+
+    setRivalTeam(getWorldFiveTeam(players))
+    setMatchResult(null)
+    setIsMatchRunning(false)
+    matchLockedRef.current = false
+    setPhase('world-five')
   }
 
   function handleRestart() {
@@ -293,7 +315,9 @@ function DraftPage() {
     recruitLockedRef.current = false
     setPhase('draft')
     setSelectedPlayers([])
-    setCurrentOptions(drawWeightedPlayers(players, OPTIONS_PER_ROUND))
+    setCurrentOptions(
+      drawWeightedPlayers(campaignPlayerPool, OPTIONS_PER_ROUND),
+    )
     setCurrentRound(1)
     setIsRolling(true)
     setRivalTeam([])
@@ -302,7 +326,7 @@ function DraftPage() {
     setMatchResult(null)
     setIsMatchRunning(false)
     setEliminatedAt(null)
-    setCampaign([])
+    setCampaignResults([])
     setLiveMatchDevCommand(undefined)
   }
 
@@ -337,7 +361,7 @@ function DraftPage() {
     setRivalTeam([])
     setUsedRivalPlayerIds([])
     setKnockoutRivalSignatures([])
-    setCampaign([])
+    setCampaignResults([])
     setPhase('team-complete')
   }
 
@@ -351,13 +375,17 @@ function DraftPage() {
     setRivalTeam([])
     setUsedRivalPlayerIds([])
     setKnockoutRivalSignatures([])
-    setCampaign([])
+    setCampaignResults([])
     setPhase('team-complete')
   }
 
   function handleDevJumpToKnockout(nextPhase: KnockoutPhase) {
     const devTeam = completeDevTeam(selectedPlayers)
-    const nextRival = generateKnockoutRival(players, devTeam, nextPhase)
+    const nextRival = generateKnockoutRival(
+      campaignPlayerPool,
+      devTeam,
+      nextPhase,
+    )
 
     resetDevFlowState()
     setSelectedPlayers(devTeam)
@@ -366,7 +394,7 @@ function DraftPage() {
     setRivalTeam(nextRival.team)
     setUsedRivalPlayerIds(nextRival.team.map((player) => player.id))
     setKnockoutRivalSignatures([nextRival.signature])
-    setCampaign(getCampaignBeforeDevPhase(nextPhase))
+    setCampaignResults([])
     setPhase(nextPhase)
   }
 
@@ -374,44 +402,38 @@ function DraftPage() {
     return (
       <section className="relative z-10 mx-auto w-full max-w-6xl">
         <header className="text-center">
-          <span className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400">
+          <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-400">
             Draft inicial
           </span>
-          <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tight sm:text-6xl">
+          <h1 className="mt-2 text-3xl font-black uppercase italic tracking-tight sm:text-5xl">
             {isRolling ? 'A roleta está girando' : 'Escolha seu jogador'}
           </h1>
-          <p className="mt-4 text-sm font-bold uppercase tracking-[0.18em] text-zinc-500">
+          <p className="mt-3 text-xs font-bold uppercase tracking-[0.16em] text-zinc-500">
             Escolha {currentRound} de {INITIAL_TEAM_SIZE}
           </p>
+          <div
+            className="mt-2 flex items-center justify-center gap-1.5"
+            aria-label={`Progresso do draft: escolha ${currentRound} de ${INITIAL_TEAM_SIZE}`}
+          >
+            {Array.from({ length: INITIAL_TEAM_SIZE }).map((_, index) => (
+              <span
+                key={index}
+                className={`h-2 w-2 rounded-full border transition duration-200 ${
+                  index < currentRound
+                    ? 'border-blue-300 bg-blue-400 shadow-[0_0_12px_rgba(96,165,250,0.55)]'
+                    : 'border-zinc-600 bg-zinc-800'
+                }`}
+              />
+            ))}
+          </div>
         </header>
 
-        <div className="mt-8">
+        <div className="mt-4">
           <TeamStatusPanel
             team={selectedPlayers}
             maxTeamSize={INITIAL_TEAM_SIZE}
             title="Seu draft"
           />
-        </div>
-
-        <div className="mt-5 flex min-h-16 flex-wrap items-center justify-center gap-3">
-          {selectedPlayers.length > 0 ? (
-            selectedPlayers.map((player, index) => (
-              <div
-                key={player.id}
-                className="flex items-center gap-3 border border-blue-500/25 bg-blue-500/10 px-4 py-3"
-              >
-                <span className="flex h-7 w-7 items-center justify-center bg-blue-500 text-xs font-black text-white">
-                  {index + 1}
-                </span>
-                <div>
-                  <p className="text-sm font-bold text-white">{player.name}</p>
-                  <p className="text-xs text-zinc-500">{player.position}</p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-zinc-600">Seu trio ainda está vazio.</p>
-          )}
         </div>
 
         {isRolling ? (
@@ -423,7 +445,7 @@ function DraftPage() {
           />
         ) : (
           <>
-            <div className="mt-9 grid gap-6 md:grid-cols-3">
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
               {currentOptions.map((player) => (
                 <PlayerCard
                   key={player.id}
@@ -434,7 +456,7 @@ function DraftPage() {
               ))}
             </div>
 
-            <p className="mt-8 text-center text-xs uppercase tracking-[0.18em] text-zinc-600">
+            <p className="mt-5 text-center text-[10px] uppercase tracking-[0.16em] text-zinc-600">
               Clique em um card para confirmar sua escolha
             </p>
           </>
@@ -477,10 +499,13 @@ function DraftPage() {
         phase === 'recruit-after-4v4') &&
       matchResult
     ) {
+      const nextTeamSize =
+        phase === 'recruit-after-3v3' ? 4 : FULL_TEAM_SIZE
+
       return (
         <RecruitPhase
           result={matchResult}
-          nextTeamSize={phase === 'recruit-after-3v3' ? 4 : 5}
+          nextTeamSize={nextTeamSize}
           onRecruit={handleRecruitPlayer}
         />
       )
@@ -495,11 +520,20 @@ function DraftPage() {
       )
     }
 
-    if (phase === 'champion') {
+    if (phase === 'world-five-transition') {
       return (
-        <ChampionScreen
+        <WorldFiveTransitionScreen
           team={selectedPlayers}
-          campaign={campaign}
+          onChallengeWorldFive={handleChallengeWorldFive}
+        />
+      )
+    }
+
+    if (phase === 'world-five-champion') {
+      return (
+        <WorldFiveChampionScreen
+          team={selectedPlayers}
+          campaignResults={campaignResults}
           onRestart={handleRestart}
         />
       )
@@ -520,7 +554,7 @@ function DraftPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#05070b] px-5 py-12 text-white sm:px-8 sm:py-16">
+    <main className="relative min-h-screen overflow-hidden bg-[#05070b] px-4 pb-7 pt-24 text-white sm:px-6 sm:pb-9">
       <div
         className="pointer-events-none absolute inset-0"
         aria-hidden="true"

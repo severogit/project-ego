@@ -1,5 +1,4 @@
 import type { Player } from '../types/player'
-import { calculateTeamPower } from '../utils/draft'
 import PlayerImage from './PlayerImage'
 
 interface TeamCompleteScreenProps {
@@ -43,15 +42,6 @@ function TeamCompleteScreen({
           </article>
         ))}
       </div>
-
-      <article className="mx-auto mt-7 flex max-w-sm flex-col items-center border border-blue-500/30 bg-blue-500/10 p-7 text-center">
-        <span className="text-xs font-black uppercase tracking-[0.22em] text-blue-300">
-          Poder total do time
-        </span>
-        <strong className="mt-3 text-6xl font-black italic text-white">
-          {calculateTeamPower(team)}
-        </strong>
-      </article>
 
       <div className="mt-8 flex justify-center">
         <button

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   MatchResult,
   MatchSide,
@@ -8,11 +9,16 @@ import type { Player } from '../types/player'
 import { DEV_MODE } from '../utils/devMode'
 import { MATCH_CONFIG } from '../utils/match'
 import {
+  getMatchDebugPayload,
+  logMatchDebugResult,
+} from '../utils/matchDebug'
+import {
   getActiveSynergies,
   getActiveUniqueSynergies,
   type TeamSynergy,
 } from '../utils/synergies'
 import { getTraitImpactSummary } from '../utils/traits'
+import Icon from './Icon'
 import PlayerImage from './PlayerImage'
 import SynergyPanel from './SynergyPanel'
 
@@ -35,12 +41,6 @@ interface SimulationParticipationRow {
   averageDefensiveWeight: number
   insights: string[]
 }
-
-const MVP_SCORING = {
-  goal: 1.35,
-  assist: 0.8,
-  defense: 0.35,
-} as const
 
 const EMPTY_DEV_STATS: PlayerMatchDevStats = {
   offensiveCandidateCount: 0,
@@ -274,7 +274,77 @@ function getSimulationParticipationRows(
   })
 }
 
+async function copyTextToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return
+  } catch {
+    const textarea = document.createElement('textarea')
+
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.top = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+
+    try {
+      document.execCommand('copy')
+    } finally {
+      document.body.removeChild(textarea)
+    }
+  }
+}
+
 function MatchResultPanel({ result }: MatchResultPanelProps) {
+  const [copyDebugFeedback, setCopyDebugFeedback] = useState(false)
+  const copyFeedbackTimerRef = useRef<number | null>(null)
+  const matchDebugPayload = useMemo(
+    () =>
+      DEV_MODE
+        ? getMatchDebugPayload(result, {
+            matchDurationMs: result.durationMs,
+            mvpFlowTieBreakBonus: MATCH_CONFIG.flow.mvpTieBreakBonus,
+          })
+        : undefined,
+    [result],
+  )
+
+  useEffect(() => {
+    logMatchDebugResult(result, {
+      matchDurationMs: result.durationMs,
+      mvpFlowTieBreakBonus: MATCH_CONFIG.flow.mvpTieBreakBonus,
+    })
+  }, [result])
+
+  useEffect(
+    () => () => {
+      if (copyFeedbackTimerRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimerRef.current)
+      }
+    },
+    [],
+  )
+
+  async function handleCopyDebugJson() {
+    if (!matchDebugPayload) {
+      return
+    }
+
+    await copyTextToClipboard(matchDebugPayload.json)
+    setCopyDebugFeedback(true)
+
+    if (copyFeedbackTimerRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimerRef.current)
+    }
+
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopyDebugFeedback(false)
+      copyFeedbackTimerRef.current = null
+    }, 1600)
+  }
+
   const orderedStats = [...result.stats].sort(
     (firstPlayer, secondPlayer) =>
       secondPlayer.rating - firstPlayer.rating ||
@@ -288,13 +358,6 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
   const simulationParticipationRows = DEV_MODE
     ? getSimulationParticipationRows(orderedStats)
     : undefined
-  const mvpGoalScore = result.mvp.goals * MVP_SCORING.goal
-  const mvpAssistScore = result.mvp.assists * MVP_SCORING.assist
-  const mvpDefenseScore =
-    result.mvp.defensiveActions * MVP_SCORING.defense
-  const mvpFlowBonus =
-    result.mvp.flowActivations * MATCH_CONFIG.flow.mvpTieBreakBonus
-
   return (
     <section className="border border-white/10 bg-black/30 p-5 sm:p-8">
       <div className="text-center">
@@ -353,88 +416,13 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
             {result.mvp.goals} gols · {result.mvp.assists} assistências ·{' '}
             {result.mvp.defensiveActions} ações defensivas
           </p>
-          {DEV_MODE && (
-            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-amber-300/20 pt-4 text-xs">
-              <div>
-                <dt className="text-zinc-500">Gols</dt>
-                <dd className="font-bold text-white">
-                  {mvpGoalScore.toFixed(2)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Assistências</dt>
-                <dd className="font-bold text-white">
-                  {mvpAssistScore.toFixed(2)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Defesa</dt>
-                <dd className="font-bold text-white">
-                  {mvpDefenseScore.toFixed(2)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-zinc-500">Bonus por Flow</dt>
-                <dd className="font-bold text-amber-200">
-                  {mvpFlowBonus.toFixed(2)}
-                </dd>
-              </div>
-              <div className="col-span-2 flex items-center justify-between gap-3 border-t border-amber-300/20 pt-3">
-                <dt className="font-black uppercase tracking-wider text-amber-200">
-                  Pontuação final
-                </dt>
-                <dd className="font-black text-amber-100">
-                  {result.mvp.rating.toFixed(2)}
-                </dd>
-              </div>
-            </dl>
-          )}
         </div>
       </article>
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-3">
-        <article className="border border-blue-500/25 bg-blue-500/[0.07] p-5">
-          <h3 className="text-sm font-black uppercase tracking-wider text-blue-300">
-            Seu time
-          </h3>
-          <dl className="mt-4 space-y-3">
-            <div className="flex justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Poder base</dt>
-              <dd className="font-bold text-white">
-                {result.playerStrength.basePower}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Força final</dt>
-              <dd className="font-bold text-blue-300">
-                {result.playerStrength.finalStrength.toFixed(1)}
-              </dd>
-            </div>
-          </dl>
-        </article>
-
-        <article className="border border-rose-500/25 bg-rose-500/[0.06] p-5">
-          <h3 className="text-sm font-black uppercase tracking-wider text-rose-300">
-            Time rival
-          </h3>
-          <dl className="mt-4 space-y-3">
-            <div className="flex justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Poder base</dt>
-              <dd className="font-bold text-white">
-                {result.rivalStrength.basePower}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-sm text-zinc-500">Força final</dt>
-              <dd className="font-bold text-rose-300">
-                {result.rivalStrength.finalStrength.toFixed(1)}
-              </dd>
-            </div>
-          </dl>
-        </article>
-
+      <div className="mx-auto mt-8 max-w-md">
         <article className="border border-amber-400/25 bg-amber-400/[0.07] p-5">
-          <h3 className="text-sm font-black uppercase tracking-wider text-amber-300">
+          <h3 className="inline-flex items-center gap-2 text-sm font-black uppercase tracking-wider text-amber-300">
+            <Icon name="zap" className="h-4 w-4" />
             FLOW
           </h3>
           <dl className="mt-4 space-y-3">
@@ -689,9 +677,19 @@ function MatchResultPanel({ result }: MatchResultPanelProps) {
 
       {DEV_MODE && (
         <section className="mt-8 border border-cyan-300/20 bg-cyan-300/[0.04] p-5">
-          <h3 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-200">
-            DEV
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-black uppercase tracking-[0.2em] text-cyan-200">
+              DEV
+            </h3>
+            <button
+              type="button"
+              onClick={handleCopyDebugJson}
+              disabled={!matchDebugPayload}
+              className="border border-cyan-300/30 bg-cyan-300/[0.08] px-3 py-2 text-[11px] font-black uppercase tracking-wider text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/[0.14] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {copyDebugFeedback ? 'Copiado!' : 'Copiar Debug JSON'}
+            </button>
+          </div>
           <div className="mt-5">
             <h4 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
               Sinergias ativadas

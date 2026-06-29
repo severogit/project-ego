@@ -1,41 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Icon, { type IconName } from '../components/Icon'
 import PlayerImage from '../components/PlayerImage'
 import { players } from '../data/players'
 import type { Player, Rarity } from '../types/player'
 import {
-  calculatePlayerPower,
-  playerAttributes,
-  type PlayerAttribute,
-} from '../utils/draft'
+  COLLECTION_RARITY_ORDER,
+  getDisplayArchetypeLabel,
+  getFlowPresentation,
+  getPlayerIdentityDescription,
+  getPlayerRelatedSynergies,
+  sortPlayersForCollection,
+  type FlowPresentation,
+  type PlayerRelatedSynergies,
+} from '../utils/collectionPresentation'
 import {
   SYNERGY_DEFINITIONS,
   UNIQUE_SYNERGY_DEFINITIONS,
-  getSynergyEffectSummary,
   type Synergy,
   type TeamSynergy,
   type UniqueSynergy,
 } from '../utils/synergies'
 
-type CollectionTab = 'overview' | 'trait-flow' | 'synergies'
 type ModalType = 'traits' | 'synergies' | null
-type SortKey =
-  | 'name'
-  | 'power'
-  | 'attack'
-  | 'defense'
-  | 'speed'
-  | 'vision'
-  | 'ego'
 
 interface CollectionEntry {
   player: Player
-}
-
-interface DisplaySynergy {
-  synergy: TeamSynergy
-  type: 'Arquetipo' | 'Unica'
-  requirementLabel: string
-  requirements: string[]
 }
 
 interface TraitGroup {
@@ -44,37 +33,7 @@ interface TraitGroup {
   players: Player[]
 }
 
-interface FlowInfo {
-  name: string
-  description: string
-}
-
-const rarityOptions: Rarity[] = [
-  'Common',
-  'Rare',
-  'Epic',
-  'Legendary',
-  'Egoist',
-]
-
-const sortOptions: Array<{ value: SortKey; label: string }> = [
-  { value: 'name', label: 'Nome' },
-  { value: 'power', label: 'Poder' },
-  { value: 'attack', label: 'Ataque' },
-  { value: 'defense', label: 'Defesa' },
-  { value: 'speed', label: 'Velocidade' },
-  { value: 'vision', label: 'Visao' },
-  { value: 'ego', label: 'Ego' },
-]
-
-const attributeLabels: Record<PlayerAttribute, string> = {
-  attack: 'Attack',
-  speed: 'Speed',
-  vision: 'Vision',
-  dribble: 'Dribble',
-  defense: 'Defense',
-  ego: 'Ego',
-}
+const orderedPlayers = sortPlayersForCollection(players)
 
 const rarityStyles: Record<
   Rarity,
@@ -83,95 +42,137 @@ const rarityStyles: Record<
     card: string
     glow: string
     accent: string
-    text: string
-    power: string
+    panel: string
   }
 > = {
   Common: {
-    badge: 'border-zinc-300/55 text-zinc-100 shadow-[0_0_16px_rgba(212,212,216,0.12)]',
+    badge:
+      'border-zinc-300/55 text-zinc-100 shadow-[0_0_16px_rgba(212,212,216,0.12)]',
     card: 'border-zinc-400/35',
-    glow: 'hover:shadow-[0_18px_42px_rgba(161,161,170,0.24)]',
+    glow: 'hover:shadow-[0_18px_42px_rgba(161,161,170,0.22)]',
     accent: 'bg-zinc-200',
-    text: 'text-zinc-100',
-    power: 'text-zinc-50 drop-shadow-[0_0_10px_rgba(212,212,216,0.28)]',
+    panel: 'border-zinc-300/30 bg-zinc-300/[0.055]',
   },
   Rare: {
-    badge: 'border-blue-300/70 text-blue-100 shadow-[0_0_18px_rgba(96,165,250,0.22)]',
+    badge:
+      'border-blue-300/70 text-blue-100 shadow-[0_0_18px_rgba(96,165,250,0.22)]',
     card: 'border-blue-300/40',
-    glow: 'hover:shadow-[0_18px_44px_rgba(59,130,246,0.34)]',
+    glow: 'hover:shadow-[0_18px_44px_rgba(59,130,246,0.3)]',
     accent: 'bg-blue-200',
-    text: 'text-blue-100',
-    power: 'text-blue-50 drop-shadow-[0_0_12px_rgba(96,165,250,0.38)]',
+    panel: 'border-blue-300/30 bg-blue-300/[0.065]',
   },
   Epic: {
-    badge: 'border-violet-300/70 text-violet-100 shadow-[0_0_18px_rgba(167,139,250,0.22)]',
+    badge:
+      'border-violet-300/70 text-violet-100 shadow-[0_0_18px_rgba(167,139,250,0.22)]',
     card: 'border-violet-300/40',
-    glow: 'hover:shadow-[0_18px_44px_rgba(139,92,246,0.34)]',
+    glow: 'hover:shadow-[0_18px_44px_rgba(139,92,246,0.3)]',
     accent: 'bg-violet-200',
-    text: 'text-violet-100',
-    power: 'text-violet-50 drop-shadow-[0_0_12px_rgba(167,139,250,0.38)]',
+    panel: 'border-violet-300/30 bg-violet-300/[0.065]',
   },
   Legendary: {
-    badge: 'border-amber-200/80 text-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.26)]',
+    badge:
+      'border-amber-200/80 text-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.26)]',
     card: 'border-amber-200/45',
-    glow: 'hover:shadow-[0_18px_46px_rgba(251,191,36,0.32)]',
+    glow: 'hover:shadow-[0_18px_46px_rgba(251,191,36,0.28)]',
     accent: 'bg-amber-100',
-    text: 'text-amber-100',
-    power: 'text-amber-50 drop-shadow-[0_0_13px_rgba(251,191,36,0.42)]',
+    panel: 'border-amber-200/35 bg-amber-200/[0.07]',
   },
   Egoist: {
-    badge: 'border-rose-300/75 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.28)]',
+    badge:
+      'border-rose-300/75 text-rose-100 shadow-[0_0_20px_rgba(244,63,94,0.28)]',
     card: 'border-rose-300/45',
-    glow: 'hover:shadow-[0_18px_46px_rgba(244,63,94,0.34)]',
+    glow: 'hover:shadow-[0_18px_46px_rgba(244,63,94,0.3)]',
     accent: 'bg-rose-200',
-    text: 'text-rose-100',
-    power: 'text-rose-50 drop-shadow-[0_0_13px_rgba(244,63,94,0.42)]',
+    panel: 'border-rose-300/35 bg-rose-300/[0.07]',
   },
 }
 
-function getSortValue(player: Player, sortKey: SortKey): number | string {
-  if (sortKey === 'name') {
-    return player.name
-  }
-
-  if (sortKey === 'power') {
-    return calculatePlayerPower(player)
-  }
-
-  return player[sortKey]
+const flowTierStyles: Record<FlowPresentation['tier'], string> = {
+  'Muito Baixa': 'text-zinc-300',
+  Baixa: 'text-blue-200',
+  Media: 'text-blue-100',
+  Alta: 'text-amber-200',
+  'Muito Alta': 'text-amber-100',
 }
 
-function getFlowInfo(player: Player): FlowInfo {
-  const primaryIdentity = player.trait?.name ?? player.archetypes?.[0] ?? 'Ego'
-  const role = player.archetypes?.[0] ?? player.position
-
-  return {
-    name: `${primaryIdentity} Flow`,
-    description: `${player.name} eleva ${role.toLowerCase()} ao maximo quando entra em ritmo. Chance base de Flow: ${player.flowRate}%.`,
-  }
+const flowSegmentStyles: Record<
+  FlowPresentation['tier'],
+  { filled: string; empty: string }
+> = {
+  'Muito Baixa': {
+    filled: 'border-zinc-300/55 bg-zinc-200/65',
+    empty: 'border-zinc-500/25 bg-white/[0.035]',
+  },
+  Baixa: {
+    filled:
+      'border-blue-300/60 bg-blue-300/65 shadow-[0_0_14px_rgba(96,165,250,0.18)]',
+    empty: 'border-blue-300/15 bg-blue-300/[0.045]',
+  },
+  Media: {
+    filled:
+      'border-blue-200/70 bg-blue-300/80 shadow-[0_0_16px_rgba(96,165,250,0.24)]',
+    empty: 'border-blue-300/18 bg-blue-300/[0.05]',
+  },
+  Alta: {
+    filled:
+      'border-amber-200/70 bg-amber-300/80 shadow-[0_0_16px_rgba(251,191,36,0.24)]',
+    empty: 'border-amber-200/18 bg-amber-300/[0.045]',
+  },
+  'Muito Alta': {
+    filled:
+      'border-amber-100/80 bg-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.34)]',
+    empty: 'border-amber-200/20 bg-amber-300/[0.055]',
+  },
 }
 
-function getPlayerSynergies(player: Player): DisplaySynergy[] {
-  const archetypes = new Set(player.archetypes ?? [])
-  const archetypeSynergies = SYNERGY_DEFINITIONS.filter((synergy) =>
-    synergy.requiredArchetypes.some((archetype) => archetypes.has(archetype)),
-  ).map((synergy) => ({
-    synergy,
-    type: 'Arquetipo' as const,
-    requirementLabel: 'Arquetipos',
-    requirements: synergy.requiredArchetypes,
-  }))
+const flowSegmentCount = 5
 
-  const uniqueSynergies = UNIQUE_SYNERGY_DEFINITIONS.filter((synergy) =>
-    synergy.requiredPlayerIds.includes(player.id),
-  ).map((synergy) => ({
-    synergy,
-    type: 'Unica' as const,
-    requirementLabel: 'Parceiros',
-    requirements: synergy.requiredPlayerNames,
-  }))
+const traitIconRules: Array<{ keywords: string[]; icon: IconName }> = [
+  {
+    keywords: ['king'],
+    icon: 'crown',
+  },
+  {
+    keywords: ['vision', 'read', 'tactician'],
+    icon: 'eye',
+  },
+  {
+    keywords: ['predator', 'hunter', 'mark'],
+    icon: 'crosshair',
+  },
+  {
+    keywords: ['pass', 'passer', 'hotline', 'support', 'link'],
+    icon: 'route',
+  },
+  {
+    keywords: ['wall', 'guardian', 'defender', 'survival', 'reflex', 'balance'],
+    icon: 'shield',
+  },
+  {
+    keywords: ['dribble', 'touch', 'chameleon', 'control', 'technique', 'creator'],
+    icon: 'sparkles',
+  },
+  {
+    keywords: ['speed', 'runner', 'acceleration', 'off-ball', 'panther'],
+    icon: 'wind',
+  },
+  {
+    keywords: ['shot', 'striker', 'impact', 'ace', 'sniper'],
+    icon: 'target',
+  },
+  {
+    keywords: ['destroyer', 'duelist', 'physique', 'physical', 'body', 'domination', 'power'],
+    icon: 'zap',
+  },
+]
 
-  return [...archetypeSynergies, ...uniqueSynergies]
+function getTraitIconName(traitName?: string): IconName {
+  const normalizedTraitName = traitName?.toLowerCase() ?? ''
+  const matchingRule = traitIconRules.find((rule) =>
+    rule.keywords.some((keyword) => normalizedTraitName.includes(keyword)),
+  )
+
+  return matchingRule?.icon ?? 'sparkles'
 }
 
 function getTraitGroups(playerList: Player[]): TraitGroup[] {
@@ -214,7 +215,7 @@ function getSynergyRequirements(synergy: TeamSynergy): {
 
   return {
     label: 'Arquetipos',
-    requirements: synergy.requiredArchetypes,
+    requirements: synergy.requiredArchetypes.map(getDisplayArchetypeLabel),
   }
 }
 
@@ -249,17 +250,17 @@ function CollectionPage() {
   const [search, setSearch] = useState('')
   const [rarityFilter, setRarityFilter] = useState<Rarity | 'all'>('all')
   const [positionFilter, setPositionFilter] = useState('all')
-  const [sortKey, setSortKey] = useState<SortKey>('power')
-  const [selectedPlayer, setSelectedPlayer] = useState<Player>(players[0])
-  const [panelPlayer, setPanelPlayer] = useState<Player>(players[0])
+  const [selectedPlayer, setSelectedPlayer] = useState<Player>(
+    orderedPlayers[0],
+  )
+  const [panelPlayer, setPanelPlayer] = useState<Player>(orderedPlayers[0])
   const [isPanelVisible, setIsPanelVisible] = useState(true)
-  const [activeTab, setActiveTab] = useState<CollectionTab>('overview')
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const panelTransitionRef = useRef<number | undefined>(undefined)
 
   const collectionEntries = useMemo<CollectionEntry[]>(
     () =>
-      players.map((player) => ({
+      orderedPlayers.map((player) => ({
         player,
       })),
     [],
@@ -275,49 +276,25 @@ function CollectionPage() {
   const filteredEntries = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
 
-    return collectionEntries
-      .filter(({ player }) => {
-        const matchesSearch = player.name
-          .toLowerCase()
-          .includes(normalizedSearch)
-        const matchesRarity =
-          rarityFilter === 'all' || player.rarity === rarityFilter
-        const matchesPosition =
-          positionFilter === 'all' || player.position === positionFilter
+    return collectionEntries.filter(({ player }) => {
+      const matchesSearch = player.name
+        .toLowerCase()
+        .includes(normalizedSearch)
+      const matchesRarity =
+        rarityFilter === 'all' || player.rarity === rarityFilter
+      const matchesPosition =
+        positionFilter === 'all' || player.position === positionFilter
 
-        return (
-          matchesSearch &&
-          matchesRarity &&
-          matchesPosition
-        )
-      })
-      .sort((firstEntry, secondEntry) => {
-        const firstValue = getSortValue(firstEntry.player, sortKey)
-        const secondValue = getSortValue(secondEntry.player, sortKey)
-
-        if (typeof firstValue === 'string') {
-          return firstValue.localeCompare(String(secondValue))
-        }
-
-        return (
-          Number(secondValue) - firstValue ||
-          firstEntry.player.name.localeCompare(secondEntry.player.name)
-        )
-      })
-  }, [
-    collectionEntries,
-    positionFilter,
-    rarityFilter,
-    search,
-    sortKey,
-  ])
+      return matchesSearch && matchesRarity && matchesPosition
+    })
+  }, [collectionEntries, positionFilter, rarityFilter, search])
 
   const selectedSynergies = useMemo(
-    () => getPlayerSynergies(panelPlayer),
+    () => getPlayerRelatedSynergies(panelPlayer),
     [panelPlayer],
   )
   const selectedFlow = useMemo(
-    () => getFlowInfo(panelPlayer),
+    () => getFlowPresentation(panelPlayer.flowRate),
     [panelPlayer],
   )
 
@@ -369,7 +346,7 @@ function CollectionPage() {
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(rgba(59,130,246,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.035)_1px,transparent_1px)] bg-[size:48px_48px]" />
       <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,rgba(14,30,58,0.72),rgba(5,7,11,0.18)_34%,rgba(5,7,11,0.92))]" />
 
-      <div className="relative z-10 mx-auto grid w-full max-w-[96rem] gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_23rem]">
+      <div className="relative z-10 mx-auto grid w-full max-w-[96rem] gap-4 xl:grid-cols-[17rem_minmax(0,1fr)_24rem]">
         <CollectionFilters
           search={search}
           onSearchChange={setSearch}
@@ -377,8 +354,6 @@ function CollectionPage() {
           onRarityFilterChange={setRarityFilter}
           positionFilter={positionFilter}
           onPositionFilterChange={setPositionFilter}
-          sortKey={sortKey}
-          onSortKeyChange={setSortKey}
           positions={positions}
           onOpenTraits={() => setActiveModal('traits')}
           onOpenSynergies={() => setActiveModal('synergies')}
@@ -391,7 +366,7 @@ function CollectionPage() {
           />
 
           {filteredEntries.length > 0 ? (
-            <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]">
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]">
               {filteredEntries.map((entry) => (
                 <CollectionPlayerCard
                   key={entry.player.id}
@@ -413,8 +388,6 @@ function CollectionPage() {
         <PlayerDetailPanel
           player={panelPlayer}
           isVisible={isPanelVisible}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
           flow={selectedFlow}
           synergies={selectedSynergies}
         />
@@ -423,29 +396,41 @@ function CollectionPage() {
       {activeModal === 'traits' && (
         <CollectionModal title="Traits" onClose={() => setActiveModal(null)}>
           <div className="grid gap-3 md:grid-cols-2">
-            {traitGroups.map((trait) => (
-              <article
-                key={trait.name}
-                className="border border-white/10 bg-black/25 p-4"
-              >
-                <h3 className="text-sm font-black uppercase italic text-white">
-                  {trait.name}
-                </h3>
-                <p className="mt-2 text-xs leading-relaxed text-zinc-400">
-                  {trait.description}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {trait.players.map((player) => (
+            {traitGroups.map((trait) => {
+              const traitIcon = getTraitIconName(trait.name)
+
+              return (
+                <article
+                  key={trait.name}
+                  className="border border-white/10 bg-black/25 p-4"
+                >
+                  <div className="flex items-start gap-3">
                     <span
-                      key={player.id}
-                      className="border border-blue-300/25 bg-blue-300/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-100"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center border border-blue-300/25 bg-blue-300/10 text-blue-100"
+                      aria-hidden="true"
                     >
-                      {player.name}
+                      <Icon name={traitIcon} className="h-5 w-5" />
                     </span>
-                  ))}
-                </div>
-              </article>
-            ))}
+                    <h3 className="min-w-0 text-sm font-black uppercase italic text-white">
+                      {trait.name}
+                    </h3>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                    {trait.description}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {trait.players.map((player) => (
+                      <span
+                        key={player.id}
+                        className="border border-blue-300/25 bg-blue-300/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-100"
+                      >
+                        {player.name}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              )
+            })}
           </div>
         </CollectionModal>
       )}
@@ -480,10 +465,10 @@ function CollectionHeader({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <span className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-300">
-            Database
+            Collection
           </span>
           <h1 className="mt-2 text-3xl font-black uppercase italic tracking-tight text-white sm:text-4xl">
-            Colecao
+            Catalogo de Personagens
           </h1>
         </div>
         <dl className="grid grid-cols-2 gap-3 text-right">
@@ -516,8 +501,6 @@ function CollectionFilters({
   onRarityFilterChange,
   positionFilter,
   onPositionFilterChange,
-  sortKey,
-  onSortKeyChange,
   positions,
   onOpenTraits,
   onOpenSynergies,
@@ -528,14 +511,12 @@ function CollectionFilters({
   onRarityFilterChange: (value: Rarity | 'all') => void
   positionFilter: string
   onPositionFilterChange: (value: string) => void
-  sortKey: SortKey
-  onSortKeyChange: (value: SortKey) => void
   positions: string[]
   onOpenTraits: () => void
   onOpenSynergies: () => void
 }) {
   return (
-    <aside className="border border-white/10 bg-[#07101d]/90 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur xl:sticky xl:top-5 xl:self-start">
+    <aside className="min-w-0 border border-white/10 bg-[#07101d]/90 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur xl:sticky xl:top-5 xl:self-start">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xs font-black uppercase tracking-[0.2em] text-blue-300">
           Filtros
@@ -568,7 +549,7 @@ function CollectionFilters({
             className="mt-2 w-full border border-white/10 bg-black/35 px-3 py-2.5 text-sm font-bold text-white outline-none transition focus:border-blue-400/70"
           >
             <option value="all">Todas</option>
-            {rarityOptions.map((rarity) => (
+            {COLLECTION_RARITY_ORDER.map((rarity) => (
               <option key={rarity} value={rarity}>
                 {rarity}
               </option>
@@ -594,37 +575,31 @@ function CollectionFilters({
           </select>
         </label>
 
-        <label className="block">
+        <div className="border border-white/10 bg-black/25 p-3">
           <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-            Ordenar
+            Ordem
           </span>
-          <select
-            value={sortKey}
-            onChange={(event) => onSortKeyChange(event.target.value as SortKey)}
-            className="mt-2 w-full border border-white/10 bg-black/35 px-3 py-2.5 text-sm font-bold text-white outline-none transition focus:border-blue-400/70"
-          >
-            {sortOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          <p className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-zinc-200">
+            Raridade + nome
+          </p>
+        </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2">
+      <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <button
           type="button"
           onClick={onOpenTraits}
-          className="border border-blue-300/25 bg-blue-300/10 px-3 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-blue-100 transition hover:border-blue-200/60 hover:bg-blue-300/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+          className="inline-flex min-w-0 items-center justify-center gap-1.5 border border-blue-300/25 bg-blue-300/10 px-2 py-2.5 text-[10px] font-black uppercase tracking-[0.1em] text-blue-100 transition hover:border-blue-200/60 hover:bg-blue-300/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400 sm:gap-2 sm:px-3 sm:text-xs sm:tracking-[0.14em]"
         >
+          <Icon name="sparkles" className="h-3.5 w-3.5" />
           Traits
         </button>
         <button
           type="button"
           onClick={onOpenSynergies}
-          className="border border-cyan-300/25 bg-cyan-300/10 px-3 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-400"
+          className="inline-flex min-w-0 items-center justify-center gap-1.5 border border-cyan-300/25 bg-cyan-300/10 px-2 py-2.5 text-[10px] font-black uppercase tracking-[0.1em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-400 sm:gap-2 sm:px-3 sm:text-xs sm:tracking-[0.14em]"
         >
+          <Icon name="network" className="h-3.5 w-3.5" />
           Sinergias
         </button>
       </div>
@@ -649,9 +624,9 @@ function CollectionPlayerCard({
       type="button"
       onClick={() => onSelect(player)}
       aria-pressed={selected}
-      className={`group relative flex h-[14.75rem] w-full flex-col overflow-hidden border bg-white/[0.045] text-left shadow-lg transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out will-change-transform hover:-translate-y-1.5 hover:scale-[1.02] hover:bg-blue-500/[0.07] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400 ${styles.card} ${styles.glow} ${
+      className={`group relative flex h-[13.5rem] w-full flex-col overflow-hidden border bg-white/[0.045] text-left shadow-lg transition-[box-shadow,border-color,background-color] duration-200 ease-out hover:bg-blue-500/[0.07] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400 ${styles.card} ${styles.glow} ${
         selected
-          ? 'z-10 scale-[1.02] border-2 border-blue-300/95 bg-blue-500/[0.12] shadow-[0_0_0_1px_rgba(147,197,253,0.42),0_18px_48px_rgba(37,99,235,0.36)]'
+          ? 'z-10 border-2 border-blue-300/95 bg-blue-500/[0.12] shadow-[0_0_0_1px_rgba(147,197,253,0.42),0_18px_48px_rgba(37,99,235,0.36)]'
           : ''
       }`}
     >
@@ -659,7 +634,6 @@ function CollectionPlayerCard({
         <PlayerImage
           player={player}
           className="h-full w-full"
-          imageClassName="transition duration-200 group-hover:scale-[1.03]"
         />
         <div
           className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(0,0,0,0.34),rgba(0,0,0,0.08)_34%,transparent_58%),linear-gradient(0deg,rgba(5,7,11,0.18),transparent_45%)]"
@@ -667,30 +641,22 @@ function CollectionPlayerCard({
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#05070b] to-transparent" />
         <span
-          className={`absolute right-2 top-2 border bg-black/62 px-2 py-1 text-[8px] font-black uppercase tracking-wider backdrop-blur-md [text-shadow:0_1px_4px_rgba(0,0,0,0.95)] ${styles.badge}`}
+          className={`absolute right-2 top-2 border bg-black/62 px-2 py-1 text-[8px] font-black uppercase tracking-wider [text-shadow:0_1px_4px_rgba(0,0,0,0.95)] ${styles.badge}`}
         >
           {player.rarity}
         </span>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col p-2.5">
-        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-blue-300/80">
-          {player.position}
-        </p>
         <h3
-          className="mt-1 line-clamp-2 font-black uppercase italic text-white"
+          className="line-clamp-2 font-black uppercase italic text-white"
           style={getCollectionNameStyle(player.name)}
         >
           {player.name}
         </h3>
-        <div className="mt-auto flex items-end justify-between gap-2 border-t border-white/10 pt-2.5">
-          <span className="text-[8px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-            Poder
-          </span>
-          <strong className={`font-mono text-xl font-black leading-none ${styles.power}`}>
-            {calculatePlayerPower(player)}
-          </strong>
-        </div>
+        <p className="mt-auto border-t border-white/10 pt-2 text-[9px] font-bold uppercase tracking-[0.16em] text-blue-300/80">
+          {player.position}
+        </p>
       </div>
     </button>
   )
@@ -699,50 +665,15 @@ function CollectionPlayerCard({
 function PlayerDetailPanel({
   player,
   isVisible,
-  activeTab,
-  onTabChange,
   flow,
   synergies,
 }: {
   player: Player
   isVisible: boolean
-  activeTab: CollectionTab
-  onTabChange: (tab: CollectionTab) => void
-  flow: FlowInfo
-  synergies: DisplaySynergy[]
+  flow: FlowPresentation
+  synergies: PlayerRelatedSynergies
 }) {
   const styles = rarityStyles[player.rarity]
-  const [displayedTab, setDisplayedTab] =
-    useState<CollectionTab>(activeTab)
-  const [isTabVisible, setIsTabVisible] = useState(true)
-  const tabTransitionRef = useRef<number | undefined>(undefined)
-
-  useEffect(
-    () => () => {
-      if (tabTransitionRef.current) {
-        window.clearTimeout(tabTransitionRef.current)
-      }
-    },
-    [],
-  )
-
-  function handleTabChange(tab: CollectionTab) {
-    if (tab === activeTab) {
-      return
-    }
-
-    if (tabTransitionRef.current) {
-      window.clearTimeout(tabTransitionRef.current)
-    }
-
-    onTabChange(tab)
-    setIsTabVisible(false)
-
-    tabTransitionRef.current = window.setTimeout(() => {
-      setDisplayedTab(tab)
-      setIsTabVisible(true)
-    }, 80)
-  }
 
   return (
     <aside className="min-w-0 border border-white/10 bg-[#07101d]/92 shadow-[0_20px_70px_rgba(0,0,0,0.32)] backdrop-blur xl:sticky xl:top-5 xl:max-h-[calc(100vh-2.5rem)] xl:overflow-y-auto xl:self-start match-scrollbar">
@@ -758,232 +689,232 @@ function PlayerDetailPanel({
             className="h-64 w-full sm:h-72 xl:h-60"
           />
           <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#07101d] to-transparent" />
+          <div
+            className={`absolute inset-x-0 bottom-0 h-1 ${styles.accent}`}
+          />
         </div>
 
-        <div className="p-4">
-          <h2
-            className="font-black uppercase italic text-white"
-            style={getDetailNameStyle(player.name)}
-          >
-            {player.name}
-          </h2>
+        <div className="grid gap-4 p-4">
+          <div>
+            <h2
+              className="font-black uppercase italic text-white"
+              style={getDetailNameStyle(player.name)}
+            >
+              {player.name}
+            </h2>
 
-          <div className="mt-3 flex items-center justify-between gap-3 border-y border-white/10 py-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className={`border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${styles.badge}`}>
+            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
+              <span
+                className={`border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${styles.badge}`}
+              >
                 {player.rarity}
               </span>
               <span className="border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-zinc-300">
                 {player.position}
               </span>
             </div>
-            <div className="shrink-0 text-right">
-              <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500">
-                Poder
-              </p>
-              <strong className={`font-mono text-4xl font-black leading-none ${styles.power}`}>
-                {calculatePlayerPower(player)}
-              </strong>
-            </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-3 border border-white/10 bg-black/25 p-1">
-            <TabButton
-              active={activeTab === 'overview'}
-              label="Visao Geral"
-              onClick={() => handleTabChange('overview')}
-            />
-            <TabButton
-              active={activeTab === 'trait-flow'}
-              label="Trait & Flow"
-              onClick={() => handleTabChange('trait-flow')}
-            />
-            <TabButton
-              active={activeTab === 'synergies'}
-              label="Sinergias"
-              onClick={() => handleTabChange('synergies')}
-            />
-          </div>
-
-          <div
-            className={`mt-4 transition-[opacity,transform] duration-150 ease-out ${
-              isTabVisible
-                ? 'translate-x-0 opacity-100'
-                : 'translate-x-1 opacity-0'
-            }`}
-          >
-            {displayedTab === 'overview' && <OverviewTab player={player} />}
-            {displayedTab === 'trait-flow' && (
-              <TraitFlowTab player={player} flow={flow} />
-            )}
-            {displayedTab === 'synergies' && (
-              <SynergiesTab synergies={synergies} />
-            )}
-          </div>
+          <TraitIdentitySection player={player} styles={styles} />
+          <FlowSection flow={flow} />
+          <ArchetypeSection player={player} />
+          <SynergySections synergies={synergies} />
         </div>
       </div>
     </aside>
   )
 }
 
-function TabButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`min-h-10 px-2 py-2 text-[10px] font-black uppercase tracking-[0.1em] transition-[background-color,color,box-shadow,transform] duration-200 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${
-        active
-          ? 'bg-blue-500 text-white shadow-[0_0_18px_rgba(59,130,246,0.26)]'
-          : 'text-zinc-500 hover:bg-white/[0.05] hover:text-zinc-200 hover:translate-y-[-1px]'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
-
-function OverviewTab({ player }: { player: Player }) {
-  return (
-    <div className="grid gap-3">
-      {player.archetypes && player.archetypes.length > 0 && (
-        <div className="border border-white/10 bg-white/[0.035] p-3">
-          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-600">
-            Tags
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {player.archetypes.map((archetype) => (
-              <span
-                key={archetype}
-                className="border border-blue-400/25 bg-blue-400/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-200"
-              >
-                {archetype}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <dl className="grid gap-2">
-        {playerAttributes.map((attribute) => (
-          <div
-            key={attribute}
-            className="border border-white/10 bg-white/[0.035] p-3"
-          >
-            <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                {attributeLabels[attribute]}
-              </dt>
-              <dd className="font-mono text-lg font-black text-white">
-                {player[attribute]}
-              </dd>
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden bg-black/55">
-              <span
-                className="block h-full bg-blue-300"
-                style={{ width: `${player[attribute]}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </dl>
-    </div>
-  )
-}
-
-function TraitFlowTab({
+function TraitIdentitySection({
   player,
-  flow,
+  styles,
 }: {
   player: Player
-  flow: FlowInfo
+  styles: (typeof rarityStyles)[Rarity]
 }) {
-  return (
-    <div className="grid gap-3">
-      <section className="border border-blue-300/20 bg-blue-300/[0.06] p-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
-          Trait
-        </p>
-        <h3 className="mt-2 text-lg font-black uppercase italic text-white">
-          {player.trait?.name ?? 'Sem trait'}
-        </h3>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-          {player.trait?.description ?? 'Nenhuma trait cadastrada.'}
-        </p>
-      </section>
+  const traitIcon = getTraitIconName(player.trait?.name)
 
-      <section className="border border-cyan-300/20 bg-cyan-300/[0.06] p-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
-          Flow
+  return (
+    <section
+      className={`relative overflow-hidden border p-4 shadow-[0_0_30px_rgba(59,130,246,0.1)] ${styles.panel}`}
+    >
+      <span
+        className={`absolute right-4 top-4 flex h-10 w-10 items-center justify-center border bg-black/20 ${styles.badge}`}
+        aria-hidden="true"
+      >
+        <Icon name={traitIcon} className="h-5 w-5" />
+      </span>
+      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200">
+        Trait
+      </p>
+      <h3 className="mt-2 pr-14 text-xl font-black uppercase italic text-white">
+        {player.trait?.name ?? 'Sem trait'}
+      </h3>
+      <p className="mt-2 text-sm leading-relaxed text-zinc-300">
+        {player.trait?.description ?? 'Nenhuma trait cadastrada.'}
+      </p>
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-500">
+          Identidade
         </p>
-        <h3 className="mt-2 text-lg font-black uppercase italic text-white">
-          {flow.name}
-        </h3>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-          {flow.description}
+        <p className="mt-1 text-sm leading-relaxed text-zinc-200">
+          {getPlayerIdentityDescription(player)}
         </p>
-      </section>
-    </div>
+      </div>
+    </section>
   )
 }
 
-function SynergiesTab({ synergies }: { synergies: DisplaySynergy[] }) {
-  if (synergies.length === 0) {
-    return (
-      <p className="border border-white/10 bg-white/[0.035] p-4 text-sm text-zinc-500">
-        Nenhuma sinergia.
+function FlowSection({ flow }: { flow: FlowPresentation }) {
+  const segmentStyles = flowSegmentStyles[flow.tier]
+
+  return (
+    <section className="border border-blue-300/20 bg-blue-300/[0.055] p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
+            Flow
+          </p>
+          <h3 className="mt-2 text-sm font-black uppercase tracking-[0.14em] text-white">
+            Chance de ativacao
+          </h3>
+        </div>
+        <Icon
+          name="zap"
+          className={`h-5 w-5 shrink-0 ${flowTierStyles[flow.tier]}`}
+        />
+      </div>
+      <div className="mt-4">
+        <div
+          className="grid grid-cols-5 gap-1.5"
+          aria-label={`Nivel de Flow ${flow.activationLevel} de ${flowSegmentCount}`}
+        >
+          {Array.from({ length: flowSegmentCount }, (_, index) => {
+            const isFilled = index < flow.activationLevel
+
+            return (
+              <span
+                key={index}
+                className={`h-2.5 border transition-colors ${
+                  isFilled ? segmentStyles.filled : segmentStyles.empty
+                }`}
+              />
+            )
+          })}
+        </div>
+        <strong
+          className={`mt-3 block text-sm font-black uppercase tracking-[0.16em] ${flowTierStyles[flow.tier]}`}
+        >
+          {flow.tier}
+        </strong>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+        {flow.description}
       </p>
-    )
+    </section>
+  )
+}
+
+function ArchetypeSection({ player }: { player: Player }) {
+  if (!player.archetypes || player.archetypes.length === 0) {
+    return null
   }
 
   return (
-    <div className="grid gap-3">
-      {synergies.map((displaySynergy) => (
-        <SynergyInfoCard
-          key={displaySynergy.synergy.id}
-          displaySynergy={displaySynergy}
+    <section className="border border-blue-300/20 bg-blue-300/[0.045] p-4">
+      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200">
+        Arquetipos
+      </h3>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {player.archetypes.map((archetype) => (
+          <span
+            key={archetype}
+            className="border border-blue-300/25 bg-blue-300/10 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.13em] text-blue-100 transition duration-200 hover:border-blue-200/60 hover:bg-blue-300/15"
+          >
+            {getDisplayArchetypeLabel(archetype)}
+          </span>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function SynergySections({
+  synergies,
+}: {
+  synergies: PlayerRelatedSynergies
+}) {
+  const hasArchetypeSynergies = synergies.archetypeSynergies.length > 0
+  const hasUniqueSynergies = synergies.uniqueSynergies.length > 0
+
+  if (!hasArchetypeSynergies && !hasUniqueSynergies) {
+    return null
+  }
+
+  return (
+    <section className="grid gap-3">
+      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">
+        Sinergias
+      </h3>
+
+      {hasArchetypeSynergies && (
+        <SynergyGroup
+          title="Sinergias de Arquetipo"
+          synergies={synergies.archetypeSynergies}
         />
+      )}
+
+      {hasUniqueSynergies && (
+        <SynergyGroup
+          title="Sinergias Unicas"
+          synergies={synergies.uniqueSynergies}
+        />
+      )}
+    </section>
+  )
+}
+
+function SynergyGroup({
+  title,
+  synergies,
+}: {
+  title: string
+  synergies: TeamSynergy[]
+}) {
+  return (
+    <div className="grid gap-2">
+      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-zinc-500">
+        {title}
+      </p>
+      {synergies.map((synergy) => (
+        <SynergyInfoCard key={synergy.id} synergy={synergy} />
       ))}
     </div>
   )
 }
 
-function SynergyInfoCard({
-  displaySynergy,
-}: {
-  displaySynergy: DisplaySynergy
-}) {
-  const { synergy, type, requirementLabel, requirements } = displaySynergy
+function SynergyInfoCard({ synergy }: { synergy: TeamSynergy }) {
+  const requirements = getSynergyRequirements(synergy)
 
   return (
-    <article className="border border-cyan-300/20 bg-cyan-300/[0.055] p-3">
+    <article className="border border-cyan-300/20 bg-cyan-300/[0.055] p-3 transition duration-200 hover:border-cyan-200/45">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h3 className="text-sm font-black uppercase italic text-white">
+        <h4 className="text-sm font-black uppercase italic text-white">
           {synergy.name}
-        </h3>
+        </h4>
         <span className="border border-cyan-200/30 bg-cyan-200/10 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-cyan-100">
-          {type}
+          {'requiredPlayerIds' in synergy ? 'Unica' : 'Arquetipo'}
         </span>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-zinc-400">
         {synergy.description}
       </p>
-      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-200">
-        {getSynergyEffectSummary(synergy)}
-      </p>
       <div className="mt-3">
         <p className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-600">
-          {requirementLabel}
+          {requirements.label}
         </p>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {requirements.map((requirement) => (
+          {requirements.requirements.map((requirement) => (
             <span
               key={requirement}
               className="border border-white/10 bg-black/25 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-300"
@@ -1012,9 +943,6 @@ function GlobalSynergyCard({ synergy }: { synergy: Synergy | UniqueSynergy }) {
       </div>
       <p className="mt-2 text-xs leading-relaxed text-zinc-400">
         {synergy.description}
-      </p>
-      <p className="mt-2 text-[10px] font-black uppercase tracking-[0.15em] text-cyan-200">
-        {getSynergyEffectSummary(synergy)}
       </p>
       <div className="mt-3">
         <p className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-600">

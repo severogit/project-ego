@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from "react-router-dom";
 
 function HomePage() {
   return (
@@ -27,15 +27,13 @@ function HomePage() {
 
         <Link
           to="/game-modes"
-          className="group mt-10 inline-flex items-center gap-3 rounded-sm bg-blue-600 px-8 py-4 text-sm font-black uppercase tracking-[0.16em] text-white shadow-[0_0_40px_rgba(37,99,235,0.3)] transition duration-300 hover:-translate-y-1 hover:bg-blue-500 hover:shadow-[0_0_55px_rgba(37,99,235,0.45)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+          className="group mt-10 inline-flex items-center rounded-sm bg-blue-600 px-8 py-4 text-sm font-black uppercase text-white shadow-[0_0_40px_rgba(37,99,235,0.3)] transition duration-300 hover:-translate-y-1 hover:bg-blue-500 hover:shadow-[0_0_55px_rgba(37,99,235,0.45)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
         >
           Jogar
           <span
             className="text-xl transition-transform group-hover:translate-x-1"
             aria-hidden="true"
-          >
-            -&gt;
-          </span>
+          ></span>
         </Link>
       </section>
 
@@ -43,7 +41,7 @@ function HomePage() {
         Talento nao basta
       </p>
     </main>
-  )
+  );
 }
 
-export default HomePage
+export default HomePage;

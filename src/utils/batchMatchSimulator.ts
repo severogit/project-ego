@@ -47,11 +47,12 @@ export type BatchBalanceAlertType =
   | 'LOW_UPSET_RATE'
 
 type BatchSide = 'home' | 'away'
-export type BatchTeamSelectionMode = 'balanced' | 'weighted'
+export type BatchSimulationMode = 'random' | 'balanced' | 'focused'
 
 type HomeAwayDistribution = Record<string, { home: number; away: number }>
 type NamedCountDistribution = Record<string, Record<string, number>>
 type RarityCountDistribution = Record<Rarity, number>
+type MatchesPerPlayerDistribution = Record<string, number>
 
 interface PlayerRarityDistribution {
   teammates: RarityCountDistribution
@@ -62,6 +63,32 @@ type PlayerRarityDistributionReport = Record<
   string,
   PlayerRarityDistribution
 >
+
+interface FocusedPlayerReport {
+  id: number
+  name: string
+}
+
+interface PlayerDistributionReport {
+  averageMatchesPerPlayer: number
+  minMatches: number
+  maxMatches: number
+  difference: number
+  matchesPerPlayer: MatchesPerPlayerDistribution
+}
+
+interface NormalizedBatchSimulationInput {
+  matchCount: number
+  options: BatchMatchSimulationOptions
+}
+
+interface FinalizeBatchReportOptions
+  extends Pick<
+    BatchMatchSimulationOptions,
+    'randomSeed' | 'simulationMode'
+  > {
+  focusedPlayer: Player | null
+}
 
 interface BatchUsageAggregate {
   id: string
@@ -95,6 +122,13 @@ interface BatchRarityAggregate {
   assists: number
   mvps: number
   totalRating: number
+}
+
+interface BatchPositionAggregate {
+  matches: number
+  goals: number
+  assists: number
+  participations: number
 }
 
 interface TeamStrengthAggregate {
@@ -134,6 +168,7 @@ interface BatchReportAccumulator {
   traits: Map<string, BatchUsageAggregate>
   synergies: Map<string, BatchUsageAggregate>
   rarity: Record<Rarity, BatchRarityAggregate>
+  positions: Map<string, BatchPositionAggregate>
   teamStrength: Record<BatchSide, TeamStrengthAggregate>
   composition: BatchCompositionDistribution
   playerPool: Player[]
@@ -149,12 +184,19 @@ export interface BatchMatchSimulationProgress {
 export interface BatchMatchSimulationOptions {
   playerPool?: Player[]
   teamSize?: number
-  teamSelectionMode?: BatchTeamSelectionMode
+  simulationMode?: BatchSimulationMode
+  focusedPlayerId?: number
+  focusedPlayerName?: string
   balancedCandidateCount?: number
   random?: RandomGenerator
   randomSeed?: string | number | null
   log?: boolean
   save?: boolean
+}
+
+export interface BatchMatchSimulationRequest
+  extends BatchMatchSimulationOptions {
+  matchCount?: number
 }
 
 export interface BatchMatchSimulationAsyncOptions
@@ -221,6 +263,14 @@ export interface BatchRarityStats {
   averageRating: number
 }
 
+export interface BatchPositionStats {
+  matches: number
+  goals: number
+  assists: number
+  participations: number
+  participationsPerGame: number
+}
+
 export interface BatchBalanceAlert {
   type: BatchBalanceAlertType
   player?: string
@@ -237,6 +287,8 @@ export interface BatchMatchReport {
   version: string
   generatedAt: string
   simulationCount: number
+  simulationMode: BatchSimulationMode
+  focusedPlayer: FocusedPlayerReport | null
   summary: {
     version: string
     generatedAt: string
@@ -291,10 +343,12 @@ export interface BatchMatchReport {
     synergyUsage: BatchUsageStats[]
   }
   rarity: Record<Rarity, BatchRarityStats>
+  positionStatistics: Record<string, BatchPositionStats>
   homeAwayDistribution: HomeAwayDistribution
   teammateDistribution: NamedCountDistribution
   opponentDistribution: NamedCountDistribution
   rarityDistribution: PlayerRarityDistributionReport
+  playerDistribution: PlayerDistributionReport
   balanceScore: number
   alerts: BatchBalanceAlert[]
   historicalComparison: {
@@ -307,7 +361,7 @@ export interface BatchMatchReport {
     simulatorVersion: string
     gameVersion: string
     balanceVersion: string
-    teamSelectionMode: BatchTeamSelectionMode
+    simulationMode: BatchSimulationMode
     executionTime: {
       startedAt: string
       finishedAt: string
@@ -333,7 +387,7 @@ const GAME_VERSION = '0.0.0'
 const BALANCE_VERSION = '0.0.0'
 const DEFAULT_MATCH_COUNT = 100
 const DEFAULT_TEAM_SIZE = 5
-const DEFAULT_TEAM_SELECTION_MODE: BatchTeamSelectionMode = 'balanced'
+const DEFAULT_SIMULATION_MODE: BatchSimulationMode = 'random'
 const DEFAULT_BALANCED_CANDIDATE_COUNT = 64
 const OUTLIER_STANDARD_DEVIATIONS = 2
 const RARITIES: Rarity[] = [
@@ -371,6 +425,15 @@ function createRarityAggregate(): BatchRarityAggregate {
     assists: 0,
     mvps: 0,
     totalRating: 0,
+  }
+}
+
+function createPositionAggregate(): BatchPositionAggregate {
+  return {
+    matches: 0,
+    goals: 0,
+    assists: 0,
+    participations: 0,
   }
 }
 
@@ -434,6 +497,27 @@ function createUsageAggregate(id: string, name: string): BatchUsageAggregate {
   }
 }
 
+function createPlayerAggregate(player: Player): BatchPlayerAggregate {
+  return {
+    id: player.id,
+    name: player.name,
+    position: player.position,
+    rarity: player.rarity,
+    matches: 0,
+    wins: 0,
+    losses: 0,
+    mvps: 0,
+    goals: 0,
+    assists: 0,
+    defensiveActions: 0,
+    participations: 0,
+    shots: 0,
+    totalRating: 0,
+    flowActivations: 0,
+    traitActivations: 0,
+  }
+}
+
 function createBatchAccumulator(
   matchCount: number,
   startedAt: string,
@@ -474,9 +558,12 @@ function createBatchAccumulator(
     totalFlowActivations: 0,
     upsetTriggered: 0,
     upsetVictories: 0,
-    players: new Map(),
+    players: new Map(
+      playerPool.map((player) => [player.id, createPlayerAggregate(player)]),
+    ),
     traits,
     synergies,
+    positions: new Map(),
     rarity: {
       Common: createRarityAggregate(),
       Rare: createRarityAggregate(),
@@ -503,24 +590,7 @@ function getOrCreatePlayerAggregate(
     return existingAggregate
   }
 
-  const aggregate: BatchPlayerAggregate = {
-    id: player.id,
-    name: player.name,
-    position: player.position,
-    rarity: player.rarity,
-    matches: 0,
-    wins: 0,
-    losses: 0,
-    mvps: 0,
-    goals: 0,
-    assists: 0,
-    defensiveActions: 0,
-    participations: 0,
-    shots: 0,
-    totalRating: 0,
-    flowActivations: 0,
-    traitActivations: 0,
-  }
+  const aggregate = createPlayerAggregate(player)
 
   players.set(player.id, aggregate)
   return aggregate
@@ -788,6 +858,16 @@ function recordPlayerStats(
 
     traitAggregate.activations += traitActivations
   }
+
+  const positionAggregate =
+    accumulator.positions.get(playerStats.player.position) ??
+    createPositionAggregate()
+
+  positionAggregate.matches += 1
+  positionAggregate.goals += playerStats.goals
+  positionAggregate.assists += playerStats.assists
+  positionAggregate.participations += playerStats.goals + playerStats.assists
+  accumulator.positions.set(playerStats.player.position, positionAggregate)
 }
 
 function recordMatch(
@@ -843,10 +923,24 @@ function drawBatchTeams(
   playerPool: Player[],
   teamSize: number,
   random: RandomGenerator,
-  teamSelectionMode: BatchTeamSelectionMode,
+  simulationMode: BatchSimulationMode,
   balancedCandidateCount: number,
+  focusedPlayer: Player | null,
 ): { homeTeam: Player[]; awayTeam: Player[] } {
-  if (teamSelectionMode === 'weighted') {
+  if (simulationMode === 'focused') {
+    if (!focusedPlayer) {
+      throw new Error('Focused simulation requires a valid focused player.')
+    }
+
+    return drawFocusedBatchTeams(
+      playerPool,
+      teamSize,
+      random,
+      focusedPlayer,
+    )
+  }
+
+  if (simulationMode === 'random') {
     return drawWeightedBatchTeams(playerPool, teamSize, random)
   }
 
@@ -878,6 +972,63 @@ function drawWeightedBatchTeams(
     undefined,
     random,
   )
+
+  return { homeTeam, awayTeam }
+}
+
+function drawFocusedBatchTeams(
+  playerPool: Player[],
+  teamSize: number,
+  random: RandomGenerator,
+  focusedPlayer: Player,
+): { homeTeam: Player[]; awayTeam: Player[] } {
+  const focusedSide: BatchSide = random() < 0.5 ? 'home' : 'away'
+  const excludedIds = [focusedPlayer.id]
+  const homeTeam =
+    focusedSide === 'home'
+      ? [
+          focusedPlayer,
+          ...drawWeightedPlayers(
+            playerPool,
+            teamSize - 1,
+            excludedIds,
+            undefined,
+            random,
+          ),
+        ]
+      : drawWeightedPlayers(
+          playerPool,
+          teamSize,
+          excludedIds,
+          undefined,
+          random,
+        )
+  const awayExcludedIds = [
+    focusedPlayer.id,
+    ...homeTeam.map((player) => player.id),
+  ]
+  const awayTeam =
+    focusedSide === 'away'
+      ? [
+          focusedPlayer,
+          ...drawWeightedPlayers(
+            playerPool,
+            teamSize - 1,
+            [
+              focusedPlayer.id,
+              ...homeTeam.map((player) => player.id),
+            ],
+            undefined,
+            random,
+          ),
+        ]
+      : drawWeightedPlayers(
+          playerPool,
+          teamSize,
+          awayExcludedIds,
+          undefined,
+          random,
+        )
 
   return { homeTeam, awayTeam }
 }
@@ -1253,6 +1404,30 @@ function finalizeRarityStats(
   }
 }
 
+function finalizePositionStats(
+  positions: Map<string, BatchPositionAggregate>,
+): Record<string, BatchPositionStats> {
+  return Object.fromEntries(
+    [...positions.entries()]
+      .sort(([firstPosition], [secondPosition]) =>
+        firstPosition.localeCompare(secondPosition),
+      )
+      .map(([position, aggregate]) => [
+        position,
+        {
+          matches: aggregate.matches,
+          goals: aggregate.goals,
+          assists: aggregate.assists,
+          participations: aggregate.participations,
+          participationsPerGame: getRate(
+            aggregate.participations,
+            aggregate.matches,
+          ),
+        },
+      ]),
+  )
+}
+
 function finalizeTeamStrength(
   strengthAggregate: TeamStrengthAggregate,
 ): Omit<TeamStrengthAggregate, 'matches'> {
@@ -1362,6 +1537,34 @@ function createPlayerRarityDistributionReport(
       ]
     }),
   )
+}
+
+function createPlayerDistributionReport(
+  players: BatchPlayerStats[],
+): PlayerDistributionReport {
+  const matches = players.map((player) => player.matches)
+  const minMatches = matches.length > 0 ? Math.min(...matches) : 0
+  const maxMatches = matches.length > 0 ? Math.max(...matches) : 0
+  const matchesPerPlayer = Object.fromEntries(
+    [...players]
+      .sort(
+        (firstPlayer, secondPlayer) =>
+          secondPlayer.matches - firstPlayer.matches ||
+          firstPlayer.name.localeCompare(secondPlayer.name),
+      )
+      .map((player) => [player.name, player.matches]),
+  )
+
+  return {
+    averageMatchesPerPlayer: getAverage(
+      matches.reduce((total, matchCount) => total + matchCount, 0),
+      players.length,
+    ),
+    minMatches,
+    maxMatches,
+    difference: maxMatches - minMatches,
+    matchesPerPlayer,
+  }
 }
 
 function sortPlayers(
@@ -1787,10 +1990,7 @@ function createAlerts(
 
 function finalizeBatchReport(
   accumulator: BatchReportAccumulator,
-  options: Pick<
-    BatchMatchSimulationOptions,
-    'randomSeed' | 'teamSelectionMode'
-  >,
+  options: FinalizeBatchReportOptions,
 ): BatchMatchReport {
   const finishedAt = new Date().toISOString()
   const executionDurationMs = Math.max(
@@ -1819,8 +2019,13 @@ function finalizeBatchReport(
     accumulator.upsetTriggered,
     simulationCount,
   )
-  const teamSelectionMode =
-    options.teamSelectionMode ?? DEFAULT_TEAM_SELECTION_MODE
+  const simulationMode = options.simulationMode ?? DEFAULT_SIMULATION_MODE
+  const focusedPlayer = options.focusedPlayer
+    ? {
+        id: options.focusedPlayer.id,
+        name: options.focusedPlayer.name,
+      }
+    : null
   const homeAwayDistribution = createHomeAwayDistribution(
     accumulator.composition,
     accumulator.playerPool,
@@ -1837,11 +2042,14 @@ function finalizeBatchReport(
     accumulator.composition,
     accumulator.playerPool,
   )
+  const playerDistribution = createPlayerDistributionReport(players)
 
   return {
     version: BATCH_REPORT_VERSION,
     generatedAt: accumulator.startedAt,
     simulationCount,
+    simulationMode,
+    focusedPlayer,
     summary: {
       version: BATCH_REPORT_VERSION,
       generatedAt: accumulator.startedAt,
@@ -1916,10 +2124,12 @@ function finalizeBatchReport(
       Legendary: finalizeRarityStats(accumulator.rarity.Legendary),
       Egoist: finalizeRarityStats(accumulator.rarity.Egoist),
     },
+    positionStatistics: finalizePositionStats(accumulator.positions),
     homeAwayDistribution,
     teammateDistribution,
     opponentDistribution,
     rarityDistribution,
+    playerDistribution,
     balanceScore: calculateBalanceScore(
       accumulator.composition,
       accumulator.playerPool,
@@ -1941,7 +2151,7 @@ function finalizeBatchReport(
       simulatorVersion: BATCH_SIMULATOR_VERSION,
       gameVersion: GAME_VERSION,
       balanceVersion: BALANCE_VERSION,
-      teamSelectionMode,
+      simulationMode,
       executionTime: {
         startedAt: accumulator.startedAt,
         finishedAt,
@@ -1950,9 +2160,11 @@ function finalizeBatchReport(
       },
       randomSeed: options.randomSeed ?? null,
       notes: [
-        teamSelectionMode === 'balanced'
+        simulationMode === 'balanced'
           ? 'Batch uses simulateMatch with balanced team selection to reduce composition bias.'
-          : 'Batch uses simulateMatch with teams drawn by the existing weighted draft helper.',
+          : simulationMode === 'focused'
+            ? 'Batch uses simulateMatch with one focused player included in every match.'
+            : 'Batch uses simulateMatch with teams drawn by the existing weighted draft helper.',
         'No match logic, balance values, Flow, Traits, Synergies, or Upset rules are changed by this report.',
       ],
     },
@@ -1986,6 +2198,52 @@ function getPositiveInteger(value: number, fallback: number): number {
     : fallback
 }
 
+function normalizeBatchSimulationInput(
+  request: number | BatchMatchSimulationRequest = DEFAULT_MATCH_COUNT,
+  options: BatchMatchSimulationOptions = {},
+): NormalizedBatchSimulationInput {
+  if (typeof request === 'number') {
+    return {
+      matchCount: request,
+      options,
+    }
+  }
+
+  const { matchCount = DEFAULT_MATCH_COUNT, ...requestOptions } = request
+
+  return {
+    matchCount,
+    options: {
+      ...requestOptions,
+      ...options,
+    },
+  }
+}
+
+function findFocusedPlayer(
+  playerPool: Player[],
+  options: BatchMatchSimulationOptions,
+): Player | null {
+  if (options.focusedPlayerId !== undefined) {
+    return (
+      playerPool.find((player) => player.id === options.focusedPlayerId) ??
+      null
+    )
+  }
+
+  if (options.focusedPlayerName) {
+    const focusedPlayerName = options.focusedPlayerName.toLowerCase()
+
+    return (
+      playerPool.find(
+        (player) => player.name.toLowerCase() === focusedPlayerName,
+      ) ?? null
+    )
+  }
+
+  return null
+}
+
 function createBatchReportAccumulator(
   matchCount = DEFAULT_MATCH_COUNT,
   options: BatchMatchSimulationOptions = {},
@@ -1994,11 +2252,15 @@ function createBatchReportAccumulator(
   playerPool: Player[]
   teamSize: number
   random: RandomGenerator
-  teamSelectionMode: BatchTeamSelectionMode
+  simulationMode: BatchSimulationMode
   balancedCandidateCount: number
+  focusedPlayer: Player | null
 } {
   const simulationCount = getPositiveInteger(matchCount, DEFAULT_MATCH_COUNT)
   const playerPool = options.playerPool ?? defaultPlayerPool
+  const simulationMode = options.simulationMode ?? DEFAULT_SIMULATION_MODE
+  const focusedPlayer =
+    simulationMode === 'focused' ? findFocusedPlayer(playerPool, options) : null
   const teamSize = Math.min(
     getPositiveInteger(options.teamSize ?? DEFAULT_TEAM_SIZE, DEFAULT_TEAM_SIZE),
     Math.floor(playerPool.length / 2),
@@ -2008,6 +2270,12 @@ function createBatchReportAccumulator(
 
   if (teamSize <= 0) {
     throw new Error('Batch simulation requires enough players for two teams.')
+  }
+
+  if (simulationMode === 'focused' && !focusedPlayer) {
+    throw new Error(
+      'Focused simulation requires focusedPlayerId or focusedPlayerName.',
+    )
   }
 
   return {
@@ -2020,12 +2288,12 @@ function createBatchReportAccumulator(
     playerPool,
     teamSize,
     random: options.random ?? Math.random,
-    teamSelectionMode:
-      options.teamSelectionMode ?? DEFAULT_TEAM_SELECTION_MODE,
+    simulationMode,
     balancedCandidateCount: getPositiveInteger(
       options.balancedCandidateCount ?? DEFAULT_BALANCED_CANDIDATE_COUNT,
       DEFAULT_BALANCED_CANDIDATE_COUNT,
     ),
+    focusedPlayer,
   }
 }
 
@@ -2034,16 +2302,18 @@ function runSingleBatchMatch(
   playerPool: Player[],
   teamSize: number,
   random: RandomGenerator,
-  teamSelectionMode: BatchTeamSelectionMode,
+  simulationMode: BatchSimulationMode,
   balancedCandidateCount: number,
+  focusedPlayer: Player | null,
 ): void {
   const { homeTeam, awayTeam } = drawBatchTeams(
     accumulator,
     playerPool,
     teamSize,
     random,
-    teamSelectionMode,
+    simulationMode,
     balancedCandidateCount,
+    focusedPlayer,
   )
   const result = simulateMatch(homeTeam, awayTeam, random)
 
@@ -2062,6 +2332,12 @@ function publishBatchReport(report: BatchMatchReport, json: string): void {
 }
 
 function logBatchReport(json: string): void {
+  if (Date.now() >= 0) {
+    console.log('📊 BATCH MATCH REPORT')
+    console.log(json)
+    return
+  }
+
   console.log('📊 BATCH MATCH REPORT')
   console.log(json)
 }
@@ -2108,17 +2384,22 @@ function emitBatchReportSync(
 }
 
 export function runBatchMatchSimulation(
-  matchCount = DEFAULT_MATCH_COUNT,
+  request: number | BatchMatchSimulationRequest = DEFAULT_MATCH_COUNT,
   options: BatchMatchSimulationOptions = {},
 ): BatchMatchReport {
+  const normalizedInput = normalizeBatchSimulationInput(request, options)
   const {
     accumulator,
     playerPool,
     teamSize,
     random,
-    teamSelectionMode,
+    simulationMode,
     balancedCandidateCount,
-  } = createBatchReportAccumulator(matchCount, options)
+    focusedPlayer,
+  } = createBatchReportAccumulator(
+    normalizedInput.matchCount,
+    normalizedInput.options,
+  )
 
   for (
     let simulationIndex = 0;
@@ -2130,28 +2411,42 @@ export function runBatchMatchSimulation(
       playerPool,
       teamSize,
       random,
-      teamSelectionMode,
+      simulationMode,
       balancedCandidateCount,
+      focusedPlayer,
     )
   }
 
-  return emitBatchReportSync(finalizeBatchReport(accumulator, options), options)
+  return emitBatchReportSync(
+    finalizeBatchReport(accumulator, {
+      randomSeed: normalizedInput.options.randomSeed,
+      simulationMode,
+      focusedPlayer,
+    }),
+    normalizedInput.options,
+  )
 }
 
 export async function runBatchMatchSimulationAsync(
-  matchCount = DEFAULT_MATCH_COUNT,
+  request: number | BatchMatchSimulationRequest = DEFAULT_MATCH_COUNT,
   options: BatchMatchSimulationAsyncOptions = {},
 ): Promise<BatchMatchSimulationRun> {
+  const normalizedInput = normalizeBatchSimulationInput(request, options)
   const {
     accumulator,
     playerPool,
     teamSize,
     random,
-    teamSelectionMode,
+    simulationMode,
     balancedCandidateCount,
-  } = createBatchReportAccumulator(matchCount, options)
+    focusedPlayer,
+  } = createBatchReportAccumulator(
+    normalizedInput.matchCount,
+    normalizedInput.options,
+  )
   const yieldEvery = getPositiveInteger(
-    options.yieldEvery ?? Math.max(1, Math.floor(accumulator.simulationCount / 50)),
+    options.yieldEvery ??
+      Math.max(1, Math.floor(accumulator.simulationCount / 50)),
     1,
   )
   const progressEvery = getPositiveInteger(
@@ -2174,8 +2469,9 @@ export async function runBatchMatchSimulationAsync(
       playerPool,
       teamSize,
       random,
-      teamSelectionMode,
+      simulationMode,
       balancedCandidateCount,
+      focusedPlayer,
     )
 
     const completed = simulationIndex + 1
@@ -2205,7 +2501,14 @@ export async function runBatchMatchSimulationAsync(
     }
   }
 
-  return emitBatchReport(finalizeBatchReport(accumulator, options), options)
+  return emitBatchReport(
+    finalizeBatchReport(accumulator, {
+      randomSeed: normalizedInput.options.randomSeed,
+      simulationMode,
+      focusedPlayer,
+    }),
+    normalizedInput.options,
+  )
 }
 
 export function downloadBatchReportJson(json: string): boolean {

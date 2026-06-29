@@ -77,8 +77,11 @@ export interface LiveMatchState {
   events: MatchEvent[]
   stats: PlayerMatchStats[]
   activeFlows: ActiveFlow[]
+  counterAttackSide?: MatchSide
   flowActivated: boolean
   flowActivations: number
+  startedAtMs: number
+  finishedAtMs?: number
   upsetOccurred: boolean
   isFinished: boolean
   winner: MatchSide | null
@@ -96,5 +99,6 @@ export interface MatchResult {
   stats: PlayerMatchStats[]
   flowActivated: boolean
   flowActivations: number
+  durationMs: number
   mvp: PlayerMatchStats
 }

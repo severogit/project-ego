@@ -1,6 +1,6 @@
 import type { CampaignVictory } from '../types/game'
 import type { Player } from '../types/player'
-import { calculateTeamPower } from '../utils/draft'
+import Icon from './Icon'
 import PlayerImage from './PlayerImage'
 
 interface ChampionScreenProps {
@@ -10,11 +10,14 @@ interface ChampionScreenProps {
 }
 
 const campaignLabels: Record<CampaignVictory, string> = {
-  'match-3v3': 'Vitória 3x3',
-  'match-4v4': 'Vitória 4x4',
-  'knockout-quarter': 'Vitória Quartas',
-  'knockout-semi': 'Vitória Semifinal',
-  'knockout-final': 'Vitória Final',
+  'match-3v3': 'Vitoria 3x3',
+  'match-4v4': 'Vitoria 4x4',
+  'match-5v5': 'Vitoria 5x5',
+  'knockout-round-of-16': 'Vitoria Oitavas',
+  'knockout-quarter': 'Vitoria Quartas',
+  'knockout-semi': 'Vitoria Semifinal',
+  'knockout-final': 'Vitoria Final',
+  'world-five': 'Vitoria World Five',
 }
 
 function ChampionScreen({
@@ -25,11 +28,12 @@ function ChampionScreen({
   return (
     <section className="relative z-10 mx-auto w-full max-w-5xl">
       <header className="text-center">
-        <span className="text-xs font-bold uppercase tracking-[0.3em] text-amber-300">
+        <span className="inline-flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-amber-300">
+          <Icon name="trophy" className="h-4 w-4" />
           Campanha perfeita
         </span>
         <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tight text-amber-100 sm:text-6xl">
-          Campeão do Project Ego
+          Campeao do Project Ego
         </h1>
         <p className="mt-4 text-zinc-400">
           Seu time sobreviveu a todas as fases do projeto.
@@ -55,16 +59,7 @@ function ChampionScreen({
         ))}
       </div>
 
-      <div className="mt-7 grid gap-5 md:grid-cols-2">
-        <article className="flex flex-col items-center justify-center border border-amber-400/30 bg-amber-400/10 p-7 text-center">
-          <span className="text-xs font-black uppercase tracking-[0.22em] text-amber-300">
-            Poder do time campeão
-          </span>
-          <strong className="mt-3 text-6xl font-black italic text-white">
-            {calculateTeamPower(team)}
-          </strong>
-        </article>
-
+      <div className="mx-auto mt-7 max-w-xl">
         <article className="border border-white/10 bg-white/[0.04] p-7">
           <h2 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-300">
             Campanha

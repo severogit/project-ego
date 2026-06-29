@@ -1,13 +1,8 @@
+import { useState } from 'react'
 import type { Player, Rarity } from '../types/player'
-import {
-  calculateChoiceImpact,
-  calculatePlayerPower,
-  playerAttributes,
-  type PlayerAttribute,
-} from '../utils/draft'
+import { getDisplayArchetypeLabel } from '../utils/collectionPresentation'
 import {
   getNewSynergiesIfPlayerAdded,
-  getSynergyEffectSummary,
   type Synergy,
   type UniqueSynergy,
 } from '../utils/synergies'
@@ -27,29 +22,24 @@ const rarityStyles: Record<Rarity, string> = {
   Egoist: 'border-rose-500 bg-rose-500/10 text-rose-300',
 }
 
-const attributeLabels: Record<PlayerAttribute, string> = {
-  attack: 'Ataque',
-  speed: 'Velocidade',
-  vision: 'Visao',
-  dribble: 'Drible',
-  defense: 'Defesa',
-  ego: 'Ego',
+const rarityGlowStyles: Record<Rarity, string> = {
+  Common: 'hover:shadow-[0_14px_38px_rgba(113,113,122,0.2)]',
+  Rare: 'hover:shadow-[0_14px_42px_rgba(59,130,246,0.24)]',
+  Epic: 'hover:shadow-[0_14px_42px_rgba(139,92,246,0.26)]',
+  Legendary: 'hover:shadow-[0_14px_44px_rgba(251,191,36,0.24)]',
+  Egoist: 'hover:shadow-[0_14px_44px_rgba(244,63,94,0.24)]',
 }
 
-const impactAttributes: PlayerAttribute[] = ['attack', 'vision', 'defense']
-
-function getChoiceImpact(team: Player[] | undefined, player: Player) {
-  if (!team || team.length === 0) {
-    return []
-  }
-
-  return calculateChoiceImpact(team, player, impactAttributes).map(
-    (impact) => ({
-      ...impact,
-      label: attributeLabels[impact.attribute],
-    }),
-  )
-}
+const synergyPreviewStyles = {
+  archetype: {
+    card: 'border-sky-400/25 bg-sky-400/[0.06]',
+    badge: 'border-sky-300/30 bg-sky-300/10 text-sky-200',
+  },
+  unique: {
+    card: 'border-amber-300/35 bg-amber-300/[0.08]',
+    badge: 'border-amber-200/40 bg-amber-200/10 text-amber-200',
+  },
+} as const
 
 function getChoiceSynergyPreview(team: Player[] | undefined, player: Player) {
   if (!team) {
@@ -59,79 +49,84 @@ function getChoiceSynergyPreview(team: Player[] | undefined, player: Player) {
   return getNewSynergiesIfPlayerAdded(team, player)
 }
 
-function formatImpact(value: number): string {
-  return value > 0 ? `+${value}` : `${value}`
-}
-
-function getImpactTone(value: number): string {
-  if (value > 0) {
-    return 'text-emerald-300'
-  }
-
-  return 'text-zinc-500'
-}
-
 function PlayerCard({
   player,
   onSelect,
   comparisonTeam,
 }: PlayerCardProps) {
-  const choiceImpact = getChoiceImpact(comparisonTeam, player)
+  const [isConfirming, setIsConfirming] = useState(false)
   const synergyPreview = getChoiceSynergyPreview(comparisonTeam, player)
+
+  function handleSelect() {
+    if (isConfirming) {
+      return
+    }
+
+    setIsConfirming(true)
+    window.setTimeout(() => onSelect(player), 180)
+  }
 
   return (
     <button
       type="button"
-      onClick={() => onSelect(player)}
-      className="group flex h-full w-full flex-col overflow-hidden border border-white/10 bg-white/[0.04] text-left shadow-xl transition duration-300 hover:-translate-y-2 hover:border-blue-500/70 hover:bg-blue-500/[0.07] hover:shadow-[0_18px_60px_rgba(37,99,235,0.18)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+      onClick={handleSelect}
+      disabled={isConfirming}
+      className={`group relative flex h-full min-h-[21rem] w-full flex-col overflow-hidden border border-white/10 bg-white/[0.04] text-left shadow-lg transition-[box-shadow,border-color,background-color] duration-200 ease-out hover:border-blue-500/70 hover:bg-blue-500/[0.07] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400 disabled:cursor-default ${rarityGlowStyles[player.rarity]} ${
+        isConfirming
+          ? 'border-white/50 bg-white/[0.08] shadow-[0_0_36px_rgba(255,255,255,0.2)]'
+          : ''
+      }`}
       aria-label={`Escolher ${player.name}`}
     >
-      <div className="relative border-b border-white/10">
-        <div className="flex h-64 w-full items-center justify-center bg-black">
-          <PlayerImage
-            player={player}
-            className="h-64 w-full transition duration-300 group-hover:scale-[1.02]"
-          />
+      <span
+        className={`pointer-events-none absolute inset-0 z-20 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.24),transparent_58%)] opacity-0 transition-opacity duration-200 ${
+          isConfirming ? 'opacity-100' : ''
+        }`}
+        aria-hidden="true"
+      />
+      <div className="relative shrink-0 border-b border-white/10">
+        <div className="flex h-40 w-full items-center justify-center bg-black sm:h-44">
+          <PlayerImage player={player} className="h-40 w-full sm:h-44" />
         </div>
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#080b12] to-transparent"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#080b12] to-transparent"
           aria-hidden="true"
         />
         <span
-          className={`absolute right-4 top-4 z-10 border px-2 py-1 text-[10px] font-black uppercase tracking-widest backdrop-blur-sm ${rarityStyles[player.rarity]}`}
+          className={`absolute right-3 top-3 z-10 border px-2 py-1 text-[9px] font-black uppercase tracking-wider ${rarityStyles[player.rarity]}`}
         >
           {player.rarity}
         </span>
       </div>
 
-      <div className="flex flex-1 flex-col p-5">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-400">
+      <div className="flex min-h-0 flex-1 flex-col p-3.5">
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-400">
           {player.position}
         </p>
-        <h2 className="mt-2 text-2xl font-black uppercase italic tracking-tight text-white">
+        <h2 className="mt-1.5 text-lg font-black uppercase italic text-white">
           {player.name}
         </h2>
 
         {(player.trait || player.archetypes?.length) && (
-          <div className="mt-4 border border-white/10 bg-black/25 p-3">
+          <div className="mt-2.5 border border-white/10 bg-black/25 p-2.5">
             {player.trait && (
               <>
-                <p className="text-xs font-black uppercase tracking-wider text-amber-300">
+                <p className="text-[10px] font-black uppercase tracking-wider text-amber-300">
                   {player.trait.name}
                 </p>
-                <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-400">
                   {player.trait.description}
                 </p>
               </>
             )}
             {player.archetypes && player.archetypes.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-1">
                 {player.archetypes.map((archetype) => (
                   <span
                     key={archetype}
-                    className="border border-blue-400/25 bg-blue-400/10 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-blue-200"
+                    className="border border-blue-400/25 bg-blue-400/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-blue-200"
                   >
-                    {archetype}
+                    {getDisplayArchetypeLabel(archetype)}
                   </span>
                 ))}
               </div>
@@ -139,49 +134,9 @@ function PlayerCard({
           </div>
         )}
 
-        <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-3">
-          {playerAttributes.map((attribute) => (
-            <div
-              key={attribute}
-              className="flex items-center justify-between gap-3 border-b border-white/5 pb-2"
-            >
-              <dt className="text-xs text-zinc-500">
-                {attributeLabels[attribute]}
-              </dt>
-              <dd className="text-sm font-bold text-zinc-200">
-                {player[attribute]}
-              </dd>
-            </div>
-          ))}
-        </dl>
-
-        {choiceImpact.length > 0 && (
-          <div className="mt-5 border border-emerald-400/15 bg-emerald-400/[0.04] p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">
-              Contribuicao ao time
-            </p>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {choiceImpact.map((impact) => (
-                <div key={impact.attribute}>
-                  <p className="text-[10px] uppercase tracking-wider text-zinc-500">
-                    {impact.label}
-                  </p>
-                  <p
-                    className={`mt-1 text-sm font-black ${getImpactTone(
-                      impact.value,
-                    )}`}
-                  >
-                    {formatImpact(impact.value)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {synergyPreview && (
-          <div className="mt-5 border border-cyan-300/15 bg-cyan-300/[0.04] p-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">
+          <div className="mt-auto border border-cyan-300/15 bg-cyan-300/[0.04] p-2.5">
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-cyan-300">
               Sinergias ativadas ao escolher
             </p>
             <SynergyPreviewList
@@ -190,15 +145,6 @@ function PlayerCard({
             />
           </div>
         )}
-
-        <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
-          <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-            Poder
-          </span>
-          <strong className="text-xl text-blue-300">
-            {calculatePlayerPower(player)}
-          </strong>
-        </div>
       </div>
     </button>
   )
@@ -216,19 +162,20 @@ function SynergyPreviewList({
 
   if (!hasNewSynergies) {
     return (
-      <p className="mt-2 text-xs font-bold uppercase tracking-wider text-zinc-600">
+      <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
         Nenhuma nova sinergia.
       </p>
     )
   }
 
   return (
-    <div className="mt-3 grid gap-2">
+    <div className="mt-2 grid gap-1.5">
       {archetypeSynergies.map((synergy) => (
         <SynergyPreviewItem
           key={synergy.id}
           synergy={synergy}
           typeLabel="Arquetipo"
+          type="archetype"
         />
       ))}
       {uniqueSynergies.map((synergy) => (
@@ -236,6 +183,7 @@ function SynergyPreviewList({
           key={synergy.id}
           synergy={synergy}
           typeLabel="Unica"
+          type="unique"
         />
       ))}
     </div>
@@ -245,25 +193,28 @@ function SynergyPreviewList({
 function SynergyPreviewItem({
   synergy,
   typeLabel,
+  type,
 }: {
   synergy: Synergy | UniqueSynergy
   typeLabel: string
+  type: keyof typeof synergyPreviewStyles
 }) {
+  const styles = synergyPreviewStyles[type]
+
   return (
-    <article className="border border-white/10 bg-black/20 p-2.5">
+    <article className={`border p-2 ${styles.card}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-black uppercase italic text-white">
+        <h3 className="text-[11px] font-black uppercase italic text-white">
           {synergy.name}
         </h3>
-        <span className="text-[9px] font-black uppercase tracking-wider text-cyan-200">
+        <span
+          className={`border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider ${styles.badge}`}
+        >
           {typeLabel}
         </span>
       </div>
-      <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+      <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-zinc-400">
         {synergy.description}
-      </p>
-      <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-cyan-200/80">
-        {getSynergyEffectSummary(synergy)}
       </p>
     </article>
   )

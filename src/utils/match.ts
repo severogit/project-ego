@@ -9,7 +9,9 @@ import type {
   TeamMatchStrength,
 } from '../types/match'
 import type { Player } from '../types/player'
+import { getPositionOffensiveBias } from '../config/positionOffensiveBias.ts'
 import { calculateTeamPower } from './draft.ts'
+import { getFlowEffects } from './flowEffects.ts'
 import {
   getActiveSynergies,
   getActiveUniqueSynergies,
@@ -37,12 +39,29 @@ export const DEBUG_MODE = false
 export const MATCH_CONFIG = {
   targetGoals: 5,
   eventDelay: {
-    base: 2000,
+    base: 1000,
   },
   eventChance: {
     goal: 0.36,
-    shot: 0.38,
-    defense: 0.26,
+    shot: 0.34,
+    defense: 0.3,
+  },
+  defense: {
+    maxEventChanceBonus: 0.28,
+    eliteTeamRating: 92,
+    baselineTeamRating: 72,
+    synergyEventBonusMultiplier: 0.35,
+    maxSynergyEventBonus: 0.1,
+    goalkeeperPresenceBonus: 0.04,
+    defenderPresenceBonusPerPlayer: 0.018,
+    maxDefenderPresenceBonus: 0.08,
+    roleWeightMultiplier: {
+      goalkeeper: 1.28,
+      centerBack: 1.16,
+      fullback: 1.1,
+      defensiveMidfielder: 1.08,
+      defenderArchetype: 1.06,
+    },
   },
   possessionPowerExponent: 2.4,
   randomFactor: {
@@ -81,6 +100,7 @@ export const MATCH_CONFIG = {
       speed: 1.2,
       vision: 1.2,
       dribble: 1.25,
+      defense: 1.22,
     },
   },
 } as const
@@ -302,6 +322,7 @@ export function initializeLiveMatch(
   rivalTeam: Player[],
   random: RandomGenerator = Math.random,
 ): LiveMatchState {
+  const startedAtMs = Date.now()
   let playerStrength = calculateTeamMatchStrength(playerTeam, random)
   let rivalStrength = calculateTeamMatchStrength(rivalTeam, random)
   let upsetOccurred = false
@@ -348,6 +369,7 @@ export function initializeLiveMatch(
     activeFlows: [],
     flowActivated: false,
     flowActivations: 0,
+    startedAtMs,
     upsetOccurred,
     isFinished: false,
     winner: null,
@@ -545,6 +567,126 @@ function getTeam(state: LiveMatchState, side: MatchSide): Player[] {
   return side === 'player' ? state.playerTeam : state.rivalTeam
 }
 
+function hasArchetype(player: Player, archetype: string): boolean {
+  return player.archetypes?.includes(archetype) ?? false
+}
+
+function isGoalkeeper(player: Player): boolean {
+  return player.position === 'Goalkeeper' || hasArchetype(player, 'Goalkeeper')
+}
+
+function isCenterBack(player: Player): boolean {
+  return (
+    player.position === 'Center Back' ||
+    player.position === 'CenterBack' ||
+    player.position === 'Defender'
+  )
+}
+
+function isFullback(player: Player): boolean {
+  return (
+    player.position === 'Left Back' ||
+    player.position === 'LeftBack' ||
+    player.position === 'Right Back' ||
+    player.position === 'RightBack'
+  )
+}
+
+function isDefensiveMidfielder(player: Player): boolean {
+  return (
+    player.position === 'Defensive Midfielder' ||
+    player.position === 'DefensiveMidfielder'
+  )
+}
+
+function isDefensivePlayer(player: Player): boolean {
+  return (
+    isGoalkeeper(player) ||
+    isCenterBack(player) ||
+    isFullback(player) ||
+    isDefensiveMidfielder(player) ||
+    hasArchetype(player, 'Defender')
+  )
+}
+
+function getDefensiveRoleWeightMultiplier(player: Player): number {
+  const roleMultipliers = MATCH_CONFIG.defense.roleWeightMultiplier
+
+  if (isGoalkeeper(player)) {
+    return roleMultipliers.goalkeeper
+  }
+
+  if (isCenterBack(player)) {
+    return roleMultipliers.centerBack
+  }
+
+  if (isFullback(player)) {
+    return roleMultipliers.fullback
+  }
+
+  if (isDefensiveMidfielder(player)) {
+    return roleMultipliers.defensiveMidfielder
+  }
+
+  if (hasArchetype(player, 'Defender')) {
+    return roleMultipliers.defenderArchetype
+  }
+
+  return 1
+}
+
+function getDefensiveActionValue(player: Player): number {
+  if (isGoalkeeper(player) || hasArchetype(player, 'Defender')) {
+    return 2
+  }
+
+  return player.defense >= 90 ? 2 : 1
+}
+
+function calculateTeamDefensiveRating(team: Player[]): number {
+  if (team.length === 0) {
+    return 0
+  }
+
+  return (
+    team.reduce(
+      (total, player) => total + player.defense * 0.75 + player.vision * 0.25,
+      0,
+    ) / team.length
+  )
+}
+
+function getDefensiveEventChanceBonus(team: Player[]): number {
+  const defensiveRating = calculateTeamDefensiveRating(team)
+  const ratingBonus =
+    clamp(
+      (defensiveRating - MATCH_CONFIG.defense.baselineTeamRating) /
+        (MATCH_CONFIG.defense.eliteTeamRating -
+          MATCH_CONFIG.defense.baselineTeamRating),
+      0,
+      1,
+    ) * MATCH_CONFIG.defense.maxEventChanceBonus
+  const defensivePlayerCount = team.filter(isDefensivePlayer).length
+  const defenderPresenceBonus = Math.min(
+    MATCH_CONFIG.defense.maxDefenderPresenceBonus,
+    defensivePlayerCount *
+      MATCH_CONFIG.defense.defenderPresenceBonusPerPlayer,
+  )
+  const goalkeeperPresenceBonus = team.some(isGoalkeeper)
+    ? MATCH_CONFIG.defense.goalkeeperPresenceBonus
+    : 0
+  const synergyBonus = Math.min(
+    MATCH_CONFIG.defense.maxSynergyEventBonus,
+    getTeamSynergyBonus(team, 'defensiveActionBonus') *
+      MATCH_CONFIG.defense.synergyEventBonusMultiplier,
+  )
+
+  return Math.min(
+    MATCH_CONFIG.defense.maxEventChanceBonus,
+    ratingBonus + defenderPresenceBonus + goalkeeperPresenceBonus + synergyBonus,
+  )
+}
+
 function getActiveFlow(
   state: LiveMatchState,
   side: MatchSide,
@@ -560,6 +702,29 @@ function isPlayerInFlow(
   return state.activeFlows.some(
     (flow) => flow.side === side && flow.playerId === playerId,
   )
+}
+
+function getBestDefensiveFlowShotConversionMultiplier(
+  state: LiveMatchState,
+  defendingSide: MatchSide,
+): number {
+  // Defensive Flow reduces the opponent's shot conversion only while the
+  // defending player has an active Flow. Multiple active defenders do not stack;
+  // the strongest single reduction is the lowest multiplier returned here.
+  const defendingTeam = getTeam(state, defendingSide)
+  const activeMultipliers = state.activeFlows
+    .filter((flow) => flow.side === defendingSide)
+    .map((flow) =>
+      defendingTeam.find((player) => player.id === flow.playerId),
+    )
+    .map((player) =>
+      player
+        ? getFlowEffects(player).opponentShotConversionMultiplier
+        : undefined,
+    )
+    .filter((multiplier): multiplier is number => multiplier !== undefined)
+
+  return activeMultipliers.length > 0 ? Math.min(...activeMultipliers) : 1
 }
 
 function getFlowAdjustedAttribute(
@@ -985,21 +1150,39 @@ function getEventChances(
   shot: number
   defense: number
 } {
-  if (!getActiveFlow(state, attackingSide)) {
-    return MATCH_CONFIG.eventChance
-  }
+  const baseChances = !getActiveFlow(state, attackingSide)
+    ? MATCH_CONFIG.eventChance
+    : (() => {
+        const goalChance = MATCH_CONFIG.eventChance.goal *
+          MATCH_CONFIG.flow.eventChanceMultiplier.goal
+        const shotChance = MATCH_CONFIG.eventChance.shot *
+          MATCH_CONFIG.flow.eventChanceMultiplier.shot
+        const defenseChance = Math.max(0.05, 1 - goalChance - shotChance)
+        const totalChance = goalChance + shotChance + defenseChance
 
-  const goalChance = MATCH_CONFIG.eventChance.goal *
-    MATCH_CONFIG.flow.eventChanceMultiplier.goal
-  const shotChance = MATCH_CONFIG.eventChance.shot *
-    MATCH_CONFIG.flow.eventChanceMultiplier.shot
-  const defenseChance = Math.max(0.05, 1 - goalChance - shotChance)
-  const totalChance = goalChance + shotChance + defenseChance
+        return {
+          goal: goalChance / totalChance,
+          shot: shotChance / totalChance,
+          defense: defenseChance / totalChance,
+        }
+      })()
+  const defendingTeam = getTeam(state, getOppositeSide(attackingSide))
+  const defenseBonus = getDefensiveEventChanceBonus(defendingTeam)
+  const baseShotAttemptChance = getShotAttemptChance(baseChances)
+  const nextShotAttemptChance = clamp(
+    baseShotAttemptChance - defenseBonus,
+    0.38,
+    0.9,
+  )
+  const goalRatio =
+    baseShotAttemptChance <= 0 ? 0 : baseChances.goal / baseShotAttemptChance
+  const goalChance = nextShotAttemptChance * goalRatio
+  const shotChance = nextShotAttemptChance - goalChance
 
   return {
-    goal: goalChance / totalChance,
-    shot: shotChance / totalChance,
-    defense: defenseChance / totalChance,
+    goal: goalChance,
+    shot: shotChance,
+    defense: 1 - nextShotAttemptChance,
   }
 }
 
@@ -1087,6 +1270,7 @@ function getFinisherWeightBreakdown(
       player,
       'finisherSelectionBonus',
     )
+  const positionWeight = synergyWeight * getPositionOffensiveBias(player.position)
 
   return {
     baseWeight,
@@ -1094,7 +1278,7 @@ function getFinisherWeightBreakdown(
       state,
       attackingSide,
       player,
-      synergyWeight,
+      positionWeight,
     ),
   }
 }
@@ -1128,6 +1312,7 @@ function getAssistantWeightBreakdown(
       getTeam(state, attackingSide),
       'offensiveParticipationBonus',
     )
+  const positionWeight = synergyWeight * getPositionOffensiveBias(player.position)
 
   return {
     baseWeight,
@@ -1135,7 +1320,7 @@ function getAssistantWeightBreakdown(
       state,
       attackingSide,
       player,
-      synergyWeight,
+      positionWeight,
     ),
   }
 }
@@ -1145,13 +1330,19 @@ function getDefensiveWeightBreakdown(
   defendingSide: MatchSide,
   player: Player,
 ): WeightBreakdown {
+  const defense = getFlowAdjustedAttribute(
+    state,
+    defendingSide,
+    player,
+    'defense',
+  )
   const vision = getFlowAdjustedAttribute(
     state,
     defendingSide,
     player,
     'vision',
   )
-  const baseWeight = player.defense * 0.7 + vision * 0.3
+  const baseWeight = defense * 0.72 + vision * 0.28
   const traitWeight = getDefensiveActionTraitWeight(
     player,
     baseWeight,
@@ -1164,6 +1355,7 @@ function getDefensiveWeightBreakdown(
       player,
       'defensiveActionBonus',
     )
+  const roleWeight = synergyWeight * getDefensiveRoleWeightMultiplier(player)
 
   return {
     baseWeight,
@@ -1171,7 +1363,7 @@ function getDefensiveWeightBreakdown(
       state,
       defendingSide,
       player,
-      synergyWeight,
+      roleWeight,
     ),
   }
 }
@@ -1282,6 +1474,7 @@ function getDecisiveGoalTraitImpactDescription(
   finalConversionChance: number,
   flowAdjustedGoalChance: number,
   synergyMultiplier: number,
+  defensiveFlowConversionMultiplier: number,
   assistant?: Player,
 ): string | undefined {
   const traitContext = getTraitContext(state, attackingSide)
@@ -1298,9 +1491,14 @@ function getDecisiveGoalTraitImpactDescription(
     wasChanceIncreaseDecisive(
       conversionRoll,
       clamp(
-        flowAdjustedGoalChance *
-          assistantConversionMultiplier *
-          synergyMultiplier,
+        clamp(
+          flowAdjustedGoalChance *
+            assistantConversionMultiplier *
+            synergyMultiplier,
+          0.04,
+          0.92,
+        ) *
+          defensiveFlowConversionMultiplier,
         0.04,
         0.92,
       ),
@@ -1312,9 +1510,14 @@ function getDecisiveGoalTraitImpactDescription(
     wasChanceIncreaseDecisive(
       conversionRoll,
       clamp(
-        flowAdjustedGoalChance *
-          scorerConversionMultiplier *
-          synergyMultiplier,
+        clamp(
+          flowAdjustedGoalChance *
+            scorerConversionMultiplier *
+            synergyMultiplier,
+          0.04,
+          0.92,
+        ) *
+          defensiveFlowConversionMultiplier,
         0.04,
         0.92,
       ),
@@ -1482,6 +1685,9 @@ function createFinishingEvent(
   const flowAdjustedGoalChance = getBaseGoalConversionChance(eventChances)
   const traitContext = getTraitContext(state, attackingSide)
   const attackingTeam = getTeam(state, attackingSide)
+  const defendingSide = getOppositeSide(attackingSide)
+  const defensiveFlowConversionMultiplier =
+    getBestDefensiveFlowShotConversionMultiplier(state, defendingSide)
   const traitConversionMultiplier = getGoalConversionTraitMultiplier(
     finisher,
     assistant,
@@ -1491,20 +1697,40 @@ function createFinishingEvent(
     attackingTeam,
     'goalConversionBonus',
   )
-  const goalChanceWithoutTrait = clamp(
+  const goalChanceWithoutTraitBeforeDefensiveFlow = clamp(
     flowAdjustedGoalChance * synergyConversionMultiplier,
     0.04,
     0.92,
   )
-  const goalChanceWithoutSynergy = clamp(
+  const goalChanceWithoutTrait = clamp(
+    goalChanceWithoutTraitBeforeDefensiveFlow *
+      defensiveFlowConversionMultiplier,
+    0.04,
+    0.92,
+  )
+  const goalChanceWithoutSynergyBeforeDefensiveFlow = clamp(
     flowAdjustedGoalChance * traitConversionMultiplier,
     0.04,
     0.92,
   )
-  const conversionChance = clamp(
+  const goalChanceWithoutSynergy = clamp(
+    goalChanceWithoutSynergyBeforeDefensiveFlow *
+      defensiveFlowConversionMultiplier,
+    0.04,
+    0.92,
+  )
+  const conversionChanceBeforeDefensiveFlow = clamp(
     flowAdjustedGoalChance *
       traitConversionMultiplier *
       synergyConversionMultiplier,
+    0.04,
+    0.92,
+  )
+  // This is the only Defensive Flow application point: it reduces the
+  // opponent's conversion after offensive Flow, traits and synergies are
+  // already resolved, without changing the offensive Flow system.
+  const conversionChance = clamp(
+    conversionChanceBeforeDefensiveFlow * defensiveFlowConversionMultiplier,
     0.04,
     0.92,
   )
@@ -1529,6 +1755,7 @@ function createFinishingEvent(
     conversionChance,
     flowAdjustedGoalChance,
     synergyConversionMultiplier,
+    defensiveFlowConversionMultiplier,
     assistant,
   )
   const synergyImpactDescription = getDecisiveGoalSynergyImpactDescription(
@@ -1581,6 +1808,10 @@ function createFinishingEvent(
     flowAdjustedGoalChance: Number(flowAdjustedGoalChance.toFixed(4)),
     goalChanceWithoutTrait: Number(goalChanceWithoutTrait.toFixed(4)),
     goalChanceWithoutSynergy: Number(goalChanceWithoutSynergy.toFixed(4)),
+    goalChanceBeforeDefensiveFlow: Number(
+      conversionChanceBeforeDefensiveFlow.toFixed(4),
+    ),
+    defensiveFlowConversionMultiplier,
     finalGoalChance: Number(conversionChance.toFixed(4)),
     conversionRoll: Number(conversionRoll.toFixed(4)),
     traitImpactWasDecisive,
@@ -1634,6 +1865,7 @@ function createDefenseEvent(
   )
   const eventId = state.events.length + 1
   const defenderWeight = selectedCandidate.weightBreakdown
+  const defensiveActionValue = getDefensiveActionValue(defender)
 
   debugLog('event:generated', {
     attackingSide,
@@ -1669,11 +1901,11 @@ function createDefenseEvent(
         'defense',
         eventId,
       ),
-      description: `${defender.name} fez uma ação defensiva decisiva.`,
+      description: `${defender.name} fez uma ação defensiva decisiva e recuperou a posse.`,
       scoreAfter: { ...state.score },
     },
     stats: updateStats(statsWithSelection, defendingSide, defender.id, {
-      defensiveActions: 1,
+      defensiveActions: defensiveActionValue,
     }),
   }
 }
@@ -1692,7 +1924,7 @@ export function advanceLiveMatch(
     return flowActivationState
   }
 
-  const attackingSide = selectAttackingSide(state, random)
+  const attackingSide = state.counterAttackSide ?? selectAttackingSide(state, random)
   const eventChances = getEventChances(state, attackingSide)
   const eventRoll = random()
   let score = state.score
@@ -1727,7 +1959,10 @@ export function advanceLiveMatch(
     score,
     stats,
     events: [...state.events, event],
+    counterAttackSide: event.type === 'defense' ? event.side : undefined,
     isFinished: winner !== null,
+    finishedAtMs:
+      winner !== null ? (state.finishedAtMs ?? Date.now()) : undefined,
     winner,
   }
   const flowDurationUpdate = advanceFlowDurations(
@@ -1763,6 +1998,7 @@ export function forceMatchWinner(
       ),
     },
     activeFlows: [],
+    finishedAtMs: state.finishedAtMs ?? Date.now(),
     isFinished: true,
     winner,
   }
@@ -1855,6 +2091,8 @@ export function createMatchResult(state: LiveMatchState): MatchResult {
     stats: state.stats,
     flowActivated: state.flowActivated,
     flowActivations: state.flowActivations,
+    durationMs:
+      (state.finishedAtMs ?? Date.now()) - state.startedAtMs,
     mvp,
   }
 

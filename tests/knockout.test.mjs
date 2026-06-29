@@ -5,12 +5,20 @@ import { generateKnockoutRival } from '../src/utils/knockout.ts'
 
 test('knockout rivals are new and increase in power each round', () => {
   const playerTeam = players.slice(0, 5)
+  const roundOf16 = generateKnockoutRival(
+    players,
+    playerTeam,
+    'knockout-round-of-16',
+    0,
+    [],
+    () => 0.5,
+  )
   const quarter = generateKnockoutRival(
     players,
     playerTeam,
     'knockout-quarter',
-    0,
-    [],
+    roundOf16.power,
+    [roundOf16.signature],
     () => 0.5,
   )
   const semi = generateKnockoutRival(
@@ -18,7 +26,7 @@ test('knockout rivals are new and increase in power each round', () => {
     playerTeam,
     'knockout-semi',
     quarter.power,
-    [quarter.signature],
+    [roundOf16.signature, quarter.signature],
     () => 0.5,
   )
   const final = generateKnockoutRival(
@@ -26,15 +34,21 @@ test('knockout rivals are new and increase in power each round', () => {
     playerTeam,
     'knockout-final',
     semi.power,
-    [quarter.signature, semi.signature],
+    [roundOf16.signature, quarter.signature, semi.signature],
     () => 0.5,
   )
 
+  assert.ok(quarter.power > roundOf16.power)
   assert.ok(semi.power > quarter.power)
   assert.ok(final.power > semi.power)
   assert.equal(
-    new Set([quarter.signature, semi.signature, final.signature]).size,
-    3,
+    new Set([
+      roundOf16.signature,
+      quarter.signature,
+      semi.signature,
+      final.signature,
+    ]).size,
+    4,
   )
 })
 

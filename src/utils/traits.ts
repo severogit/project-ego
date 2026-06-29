@@ -62,7 +62,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Perfect Pass": {
     summary: "Perfect Pass: + assistencias",
     modifiers: {
-      assistWeightMultiplier: 1.4,
+      assistWeightMultiplier: 1.2,
       assistedShotConversionMultiplier: 1.1,
     },
     phrases: {
@@ -115,7 +115,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Red Panther": {
     summary: "Red Panther: + velocidade ofensiva",
     modifiers: {
-      offensiveParticipationMultiplier: 1.2,
+      offensiveParticipationMultiplier: 1.22,
       shotWeightMultiplier: 1.08,
     },
     phrases: {
@@ -187,8 +187,8 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Shadow Runner": {
     summary: "Shadow Runner: + infiltracao",
     modifiers: {
-      offensiveParticipationMultiplier: 1.14,
-      shotWeightMultiplier: 1.12,
+      offensiveParticipationMultiplier: 1.12,
+      shotWeightMultiplier: 1.08,
     },
     phrases: {
       finisher: (player) => `${player.name} surge livre com Shadow Runner.`,
@@ -235,7 +235,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Acceleration Burst": {
     summary: "Acceleration Burst: + arrancada",
     modifiers: {
-      offensiveParticipationMultiplier: 1.16,
+      offensiveParticipationMultiplier: 1.22,
       shotWeightMultiplier: 1.15,
     },
     phrases: {
@@ -383,7 +383,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Quick Man Mark": {
     summary: "Quick Man Mark: + marcacao",
     modifiers: {
-      defensiveActionWeightMultiplier: 1.1,
+      defensiveActionWeightMultiplier: 1.16,
     },
     phrases: {
       defender: (player) => `${player.name} fecha a jogada com Quick Man Mark.`,
@@ -414,7 +414,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Body Check": {
     summary: "Body Check: + duelos",
     modifiers: {
-      defensiveActionWeightMultiplier: 1.08,
+      defensiveActionWeightMultiplier: 1.12,
     },
     phrases: {
       defender: (player) => `${player.name} vence o contato com Body Check.`,
@@ -433,7 +433,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Tight Mark": {
     summary: "Tight Mark: + marcacao",
     modifiers: {
-      defensiveActionWeightMultiplier: 1.09,
+      defensiveActionWeightMultiplier: 1.14,
     },
     phrases: {
       defender: (player) => `${player.name} gruda na marcacao com Tight Mark.`,
@@ -495,7 +495,7 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
   "Wild Reflexes": {
     summary: "Wild Reflexes: + defesa",
     modifiers: {
-      defensiveActionWeightMultiplier: 1.35,
+      defensiveActionWeightMultiplier: 1.58,
     },
     phrases: {
       defender: (player) => `${player.name} reage com Wild Reflexes.`,
@@ -508,6 +508,69 @@ export const TRAIT_DEFINITIONS: Record<string, TraitDefinition> = {
     },
     phrases: {
       defender: (player) => `${player.name} bloqueia com Last Wall.`,
+    },
+  },
+  "Power Striker": {
+    summary: "Power Striker: + chute fisico",
+    modifiers: {
+      shotWeightMultiplier: 1.28,
+      goalConversionMultiplier: 1.18,
+      assistWeightMultiplier: 0.72,
+    },
+    clutchModifiers: {
+      goalConversionMultiplier: 1.24,
+      flowChanceMultiplier: 1.08,
+    },
+    phrases: {
+      finisher: (player) => `${player.name} domina a area com Power Striker.`,
+      flow: (player) => `${player.name} transforma forca bruta em FLOW.`,
+    },
+  },
+  "Physical Domination": {
+    summary: "Physical Domination: + duelos e pressao",
+    modifiers: {
+      shotWeightMultiplier: 1.08,
+      defensiveActionWeightMultiplier: 1.32,
+      offensiveParticipationMultiplier: 1.06,
+      flowChanceMultiplier: 1.06,
+    },
+    clutchModifiers: {
+      defensiveActionWeightMultiplier: 1.4,
+    },
+    phrases: {
+      finisher: (player) => `${player.name} abre espaco no contato fisico.`,
+      defender: (player) =>
+        `${player.name} vence o duelo com Physical Domination.`,
+      flow: (player) => `${player.name} intimida o campo inteiro em FLOW.`,
+    },
+  },
+  "Elegant Control": {
+    summary: "Elegant Control: + criacao tecnica",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.16,
+      assistWeightMultiplier: 1.26,
+      assistedShotConversionMultiplier: 1.1,
+      shotWeightMultiplier: 1.06,
+    },
+    phrases: {
+      finisher: (player) => `${player.name} finaliza com controle elegante.`,
+      assistant: (player) =>
+        `${player.name} manipula a jogada com Elegant Control.`,
+      flow: (player) => `${player.name} joga em um ritmo refinado de FLOW.`,
+    },
+  },
+  "Agile Creator": {
+    summary: "Agile Creator: + drible e assistencias",
+    modifiers: {
+      offensiveParticipationMultiplier: 1.22,
+      assistWeightMultiplier: 1.22,
+      assistedShotConversionMultiplier: 1.08,
+      flowChanceMultiplier: 1.08,
+    },
+    phrases: {
+      assistant: (player) => `${player.name} cria uma linha de passe agil.`,
+      finisher: (player) => `${player.name} desequilibra apos o drible.`,
+      flow: (player) => `${player.name} acelera a criacao em FLOW.`,
     },
   },
 };

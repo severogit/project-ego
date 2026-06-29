@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { players } from '../src/data/players.ts'
 import {
+  SYNERGY_DEFINITIONS,
   getActiveSynergies,
   getActiveUniqueSynergies,
   getNewSynergiesIfPlayerAdded,
@@ -77,6 +78,100 @@ test('synergy multipliers expose configured bonuses', () => {
   assert.equal(getSynergyEffectSummary(killerPass), '+ conversao 10%')
 })
 
+test('defensive archetype synergies activate with defense-focused effects', () => {
+  const team = [
+    createPlayer(1, ['Defender', 'Reactive', 'Goalkeeper']),
+    createPlayer(2, ['Leader', 'Power', 'Sprinter']),
+    createPlayer(3, ['Visionary']),
+    createPlayer(4, ['Finisher']),
+    createPlayer(5, ['Playmaker']),
+  ]
+  const synergies = getActiveSynergies(team)
+  const synergyIds = synergies.map((synergy) => synergy.id)
+
+  assert.ok(synergyIds.includes('iron-wall'))
+  assert.ok(synergyIds.includes('last-line'))
+  assert.ok(synergyIds.includes('counter-press'))
+  assert.ok(synergyIds.includes('lockdown'))
+  assert.ok(synergyIds.includes('physical-fortress'))
+  assert.ok(synergyIds.includes('press-machine'))
+  assert.ok(synergyIds.includes('complete-team'))
+  assert.equal(getTeamSynergyBonus(team, 'flowChanceBonus'), 0.13)
+  assert.equal(
+    getSynergyImpactMessage(team, 'defense', 3, { force: true }),
+    'Defensive Command fortaleceu a marcacao.',
+  )
+})
+
+test('defensive archetype synergies use distinct style requirements', () => {
+  const defensiveRequirements = Object.fromEntries(
+    SYNERGY_DEFINITIONS.filter((synergy) =>
+      [
+        'defensive-command',
+        'iron-wall',
+        'last-line',
+        'counter-press',
+        'lockdown',
+        'physical-fortress',
+        'press-machine',
+        'complete-team',
+      ].includes(synergy.id),
+    ).map((synergy) => [synergy.id, synergy.requiredArchetypes]),
+  )
+
+  assert.deepEqual(defensiveRequirements, {
+    'defensive-command': ['Leader', 'Goalkeeper'],
+    'iron-wall': ['Defender', 'Reactive'],
+    'last-line': ['Goalkeeper', 'Visionary'],
+    'counter-press': ['Leader', 'Power'],
+    lockdown: ['Visionary', 'Reactive'],
+    'physical-fortress': ['Power', 'Goalkeeper'],
+    'press-machine': ['Leader', 'Sprinter'],
+    'complete-team': ['Finisher', 'Playmaker', 'Defender'],
+  })
+})
+
+test('a compact defensive core no longer activates every defensive style', () => {
+  const team = [
+    createPlayer(1, ['Defender', 'Reactive', 'Goalkeeper']),
+    createPlayer(2, ['Defender', 'Leader']),
+    createPlayer(3, ['Defender', 'Power']),
+  ]
+  const synergyIds = getActiveSynergies(team).map((synergy) => synergy.id)
+
+  assert.deepEqual(synergyIds, [
+    'defensive-command',
+    'iron-wall',
+    'counter-press',
+    'physical-fortress',
+  ])
+  assert.equal(synergyIds.includes('last-line'), false)
+  assert.equal(synergyIds.includes('lockdown'), false)
+  assert.equal(synergyIds.includes('press-machine'), false)
+})
+
+test('new defensive synergies do not add offensive bonuses except Complete Team', () => {
+  const defenseOnlySynergyIds = [
+    'iron-wall',
+    'last-line',
+    'counter-press',
+    'lockdown',
+    'physical-fortress',
+    'press-machine',
+  ]
+
+  for (const synergyId of defenseOnlySynergyIds) {
+    const synergy = SYNERGY_DEFINITIONS.find(
+      (candidate) => candidate.id === synergyId,
+    )
+
+    assert.ok(synergy, `${synergyId} should exist`)
+    assert.equal(synergy.effects.goalConversionBonus, undefined)
+    assert.equal(synergy.effects.offensiveParticipationBonus, undefined)
+    assert.equal(synergy.effects.finisherSelectionBonus, undefined)
+  }
+})
+
 test('unique synergies are detected from specific player pairs', () => {
   const team = [
     createPlayer(5, ['Finisher'], 'Nagi Seishiro'),
@@ -88,7 +183,7 @@ test('unique synergies are detected from specific player pairs', () => {
     synergies.map((synergy) => synergy.id),
     ['perfect-duo'],
   )
-  assert.equal(getTeamSynergyMultiplier(team, 'goalConversionBonus'), 1.15)
+  assert.equal(getTeamSynergyMultiplier(team, 'goalConversionBonus'), 1.21)
 })
 
 test('preview returns only synergies newly activated by a candidate', () => {
@@ -176,4 +271,41 @@ test('Ego Trigger keeps its Flow bonus after balance update', () => {
 
   assert.ok(synergies.some((synergy) => synergy.id === 'ego-trigger'))
   assert.equal(getTeamSynergyBonus(team, 'flowChanceBonus'), 0.1)
+})
+
+test('World Five unique synergies activate from the official roster', () => {
+  const team = getRosterPlayersByName([
+    'Adam Blake',
+    'Dada Silva',
+    'Julian Loki',
+    'Leonardo Luna',
+    'Pablo Cavasoz',
+  ])
+  const synergies = getActiveUniqueSynergies(team)
+  const synergyIds = synergies.map((synergy) => synergy.id)
+
+  assert.ok(synergyIds.includes('world-five'))
+  assert.ok(synergyIds.includes('global-elite'))
+  assert.ok(synergyIds.includes('speed-and-technique'))
+  assert.ok(synergyIds.includes('physical-pressure'))
+  assert.ok(getTeamSynergyBonus(team, 'flowChanceBonus') >= 0.18)
+  assert.equal(
+    getSynergyImpactMessage(team, 'flow', 1, { force: true }),
+    'World Five elevou a pressao do confronto final.',
+  )
+})
+
+test('Global Elite activates with at least three World Five members', () => {
+  const team = getRosterPlayersByName([
+    'Adam Blake',
+    'Julian Loki',
+    'Pablo Cavasoz',
+  ])
+  const synergies = getActiveUniqueSynergies(team)
+
+  assert.ok(synergies.some((synergy) => synergy.id === 'global-elite'))
+  assert.equal(
+    synergies.some((synergy) => synergy.id === 'world-five'),
+    false,
+  )
 })

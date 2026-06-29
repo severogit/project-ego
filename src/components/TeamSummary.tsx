@@ -1,11 +1,5 @@
 import type { MatchPhase } from '../types/game'
 import type { Player } from '../types/player'
-import {
-  calculateAttributeAverages,
-  calculatePlayerPower,
-  calculateTeamPower,
-  playerAttributes,
-} from '../utils/draft'
 import { MATCH_PHASE_LABELS } from '../utils/gameFlow'
 import PlayerImage from './PlayerImage'
 import SynergyPanel from './SynergyPanel'
@@ -17,145 +11,109 @@ interface TeamSummaryProps {
   onStartMatch: () => void
 }
 
-const attributeLabels = {
-  attack: 'Ataque',
-  speed: 'Velocidade',
-  vision: 'Visão',
-  dribble: 'Drible',
-  defense: 'Defesa',
-  ego: 'Ego',
-}
-
 function TeamSummary({
   team,
   rivalTeam,
   phase,
   onStartMatch,
 }: TeamSummaryProps) {
-  const teamPower = calculateTeamPower(team)
-  const averages = calculateAttributeAverages(team)
   const matchLabel = MATCH_PHASE_LABELS[phase]
   const isKnockout = phase.startsWith('knockout-')
 
   return (
     <section className="relative z-10 mx-auto w-full max-w-6xl">
       <header className="text-center">
-        <span className="text-xs font-bold uppercase tracking-[0.3em] text-blue-400">
-          {isKnockout ? 'Mata-mata' : 'Próximo desafio'}
+        <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-400">
+          {isKnockout ? 'Mata-mata' : 'Proximo desafio'}
         </span>
-        <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tight sm:text-6xl">
+        <h1 className="mt-2 text-3xl font-black uppercase italic tracking-tight sm:text-5xl">
           {isKnockout ? matchLabel : `Partida ${matchLabel}`}
         </h1>
-        <p className="mt-4 text-zinc-400">
-          Analise os dois times e simule esta partida.
+        <p className="mt-3 text-sm text-zinc-400">
+          Analise identidades, traits e sinergias antes da partida.
         </p>
       </header>
 
-      <div className="mt-10 grid gap-8 lg:grid-cols-2">
+      <div className="mt-7 grid gap-6 lg:grid-cols-2">
         <section>
-          <div className="flex items-end justify-between gap-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-blue-300">
-              Seu time
-            </h2>
-            <span className="text-sm font-bold text-zinc-500">
-              Poder {teamPower}
-            </span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <h2 className="text-xs font-black uppercase tracking-[0.18em] text-blue-300">
+            Seu time
+          </h2>
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
             {team.map((player) => (
-              <article
+              <PlayerSummaryCard
                 key={player.id}
-                className="overflow-hidden border border-blue-500/20 bg-blue-500/[0.05]"
-              >
-                <PlayerImage player={player} className="h-32 sm:h-40" />
-                <div className="p-3">
-                  <h3 className="truncate text-sm font-black uppercase italic">
-                    {player.name}
-                  </h3>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Poder {calculatePlayerPower(player)}
-                  </p>
-                </div>
-              </article>
+                player={player}
+                tone="player"
+              />
             ))}
           </div>
-          <div className="mt-5 border-t border-white/10 pt-5">
+          <div className="mt-4 border-t border-white/10 pt-4">
             <SynergyPanel team={team} title="Sinergias do seu time" />
           </div>
         </section>
 
         <section>
-          <div className="flex items-end justify-between gap-4">
-            <h2 className="text-sm font-black uppercase tracking-[0.2em] text-rose-300">
-              Time rival
-            </h2>
-            <span className="text-sm font-bold text-zinc-500">
-              Poder {calculateTeamPower(rivalTeam)}
-            </span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <h2 className="text-xs font-black uppercase tracking-[0.18em] text-rose-300">
+            Time rival
+          </h2>
+          <div className="mt-3 grid grid-cols-2 gap-2.5">
             {rivalTeam.map((player) => (
-              <article
+              <PlayerSummaryCard
                 key={player.id}
-                className="overflow-hidden border border-rose-500/20 bg-rose-500/[0.05]"
-              >
-                <PlayerImage player={player} className="h-32 sm:h-40" />
-                <div className="p-3">
-                  <h3 className="truncate text-sm font-black uppercase italic">
-                    {player.name}
-                  </h3>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Poder {calculatePlayerPower(player)}
-                  </p>
-                </div>
-              </article>
+                player={player}
+                tone="rival"
+              />
             ))}
           </div>
-          <div className="mt-5 border-t border-white/10 pt-5">
+          <div className="mt-4 border-t border-white/10 pt-4">
             <SynergyPanel team={rivalTeam} title="Sinergias do rival" />
           </div>
         </section>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <article className="flex flex-col justify-center border border-blue-500/30 bg-blue-500/10 p-7 text-center">
-          <span className="text-xs font-black uppercase tracking-[0.22em] text-blue-300">
-            Poder total
-          </span>
-          <strong className="mt-3 text-6xl font-black italic text-white">
-            {teamPower}
-          </strong>
-        </article>
-
-        <article className="border border-white/10 bg-white/[0.04] p-7">
-          <h2 className="text-sm font-black uppercase tracking-[0.2em] text-zinc-300">
-            Média dos atributos
-          </h2>
-          <dl className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3">
-            {playerAttributes.map((attribute) => (
-              <div key={attribute}>
-                <dt className="text-xs uppercase tracking-wider text-zinc-500">
-                  {attributeLabels[attribute]}
-                </dt>
-                <dd className="mt-1 text-2xl font-black text-white">
-                  {averages[attribute].toFixed(1)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </article>
-      </div>
-
-      <div className="mt-8 flex justify-center">
+      <div className="mt-6 flex justify-center">
         <button
           type="button"
           onClick={onStartMatch}
-          className="bg-emerald-600 px-8 py-4 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-400"
+          className="bg-emerald-600 px-7 py-3 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-emerald-500 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-400"
         >
           Iniciar {isKnockout ? matchLabel : `partida ${matchLabel}`}
         </button>
       </div>
     </section>
+  )
+}
+
+function PlayerSummaryCard({
+  player,
+  tone,
+}: {
+  player: Player
+  tone: 'player' | 'rival'
+}) {
+  const toneClass =
+    tone === 'player'
+      ? 'border-blue-500/20 bg-blue-500/[0.05]'
+      : 'border-rose-500/20 bg-rose-500/[0.05]'
+
+  return (
+    <article className={`overflow-hidden border ${toneClass}`}>
+      <PlayerImage player={player} className="h-28 sm:h-32" />
+      <div className="border-t border-white/10 p-2.5">
+        <h3 className="truncate text-xs font-black uppercase italic">
+          {player.name}
+        </h3>
+        <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">
+          {player.rarity} / {player.position}
+        </p>
+        {player.trait && (
+          <p className="mt-1 truncate text-[10px] font-black uppercase tracking-[0.1em] text-amber-300">
+            {player.trait.name}
+          </p>
+        )}
+      </div>
+    </article>
   )
 }
 

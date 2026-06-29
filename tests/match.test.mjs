@@ -98,6 +98,16 @@ function createTimelineEvent(id) {
   }
 }
 
+function createActiveFlow(side, player) {
+  return {
+    side,
+    playerId: player.id,
+    playerName: player.name,
+    offensivePossessionsRemaining: 3,
+    eventsRemaining: 4,
+  }
+}
+
 function createFlowReadyState() {
   const playerTeam = [
     { ...createPlayer(1, 90), flowRate: 100 },
@@ -201,6 +211,158 @@ test('dev simulation metrics count selected finishers', () => {
   assert.ok(selectedFinisher?.dev.totalFinisherWeight > 0)
   assert.equal(otherCandidate?.dev.finisherSelectedCount, 0)
   assert.equal(otherCandidate?.dev.offensiveCandidateCount, 1)
+})
+
+test('position offensive bias affects only offensive participant selection', () => {
+  const goalkeeper = {
+    ...createPlayer(1, 80),
+    name: 'Goalkeeper Candidate',
+    position: 'Goalkeeper',
+  }
+  const striker = {
+    ...createPlayer(2, 80),
+    name: 'Striker Candidate',
+    position: 'Striker',
+  }
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([goalkeeper, striker], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0, 0.2, 0.99, 0.99]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'shot')
+  assert.equal(state.events.at(-1)?.playerId, striker.id)
+  assert.equal(
+    state.stats.find((playerStats) => playerStats.player.id === goalkeeper.id)
+      ?.dev.finisherSelectedCount,
+    0,
+  )
+  assert.equal(
+    state.stats.find((playerStats) => playerStats.player.id === striker.id)
+      ?.dev.finisherSelectedCount,
+    1,
+  )
+})
+
+test('goalkeepers are weighted as defensive action candidates', () => {
+  const goalkeeper = {
+    ...createPlayer(1, 80),
+    name: 'Goalkeeper Candidate',
+    position: 'Goalkeeper',
+  }
+  const striker = {
+    ...createPlayer(2, 80),
+    name: 'Striker Candidate',
+    position: 'Striker',
+  }
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([goalkeeper, striker], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(state, sequenceRandom([0.99, 0.99, 0]))
+
+  const goalkeeperStats = state.stats.find(
+    (playerStats) => playerStats.player.id === goalkeeper.id,
+  )
+  const strikerStats = state.stats.find(
+    (playerStats) => playerStats.player.id === striker.id,
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'defense')
+  assert.equal(state.events.at(-1)?.playerId, goalkeeper.id)
+  assert.ok(
+    (goalkeeperStats?.dev.totalDefensiveWeight ?? 0) >
+      (strikerStats?.dev.totalDefensiveWeight ?? 0),
+  )
+})
+
+test('defensive actions recover possession for the next attack', () => {
+  const defender = createPlayer(1, 90)
+  const teammate = createPlayer(2, 80)
+  const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
+  let state = initializeLiveMatch([defender, teammate], rivalTeam, () => 0.99)
+
+  state = advanceLiveMatch(state, sequenceRandom([0.99, 0.99, 0]))
+
+  assert.equal(state.events.at(-1)?.type, 'defense')
+  assert.equal(state.events.at(-1)?.side, 'player')
+  assert.equal(state.counterAttackSide, 'player')
+
+  state = advanceLiveMatch(state, sequenceRandom([0, 0, 0.99, 0.99]))
+
+  assert.equal(state.events.at(-1)?.side, 'player')
+  assert.equal(state.counterAttackSide, undefined)
+})
+
+test('defensive FLOW lowers opponent shot conversion', () => {
+  const finisher = createPlayer(1, 80)
+  const teammate = createPlayer(2, 80)
+  const aiku = {
+    ...createPlayer(3, 80),
+    name: 'Oliver Aiku',
+    position: 'Center Back',
+    rarity: 'Legendary',
+  }
+  const rivalTeammate = createPlayer(4, 80)
+  let state = initializeLiveMatch(
+    [finisher, teammate],
+    [aiku, rivalTeammate],
+    () => 0.99,
+  )
+
+  state = {
+    ...state,
+    activeFlows: [createActiveFlow('rival', aiku)],
+    flowActivated: true,
+    flowActivations: 1,
+  }
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0, 0.99, 0.45]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'shot')
+  assert.equal(state.events.at(-1)?.playerId, finisher.id)
+})
+
+test('defensive FLOW uses only the best active multiplier', () => {
+  const finisher = createPlayer(1, 80)
+  const teammate = createPlayer(2, 80)
+  const aiku = {
+    ...createPlayer(3, 80),
+    name: 'Oliver Aiku',
+    position: 'Center Back',
+    rarity: 'Legendary',
+  }
+  const commonDefender = {
+    ...createPlayer(4, 80),
+    name: 'Common Defender',
+    position: 'Defender',
+    rarity: 'Common',
+  }
+  let state = initializeLiveMatch(
+    [finisher, teammate],
+    [aiku, commonDefender],
+    () => 0.99,
+  )
+
+  state = {
+    ...state,
+    activeFlows: [
+      createActiveFlow('rival', aiku),
+      createActiveFlow('rival', commonDefender),
+    ],
+    flowActivated: true,
+    flowActivations: 2,
+  }
+  state = advanceLiveMatch(
+    state,
+    sequenceRandom([0, 0.5, 0, 0.99, 0.34]),
+  )
+
+  assert.equal(state.events.at(-1)?.type, 'goal')
+  assert.equal(state.events.at(-1)?.playerId, finisher.id)
 })
 
 test('dev simulation metrics count selected assistants', () => {
@@ -419,29 +581,26 @@ test('Direct Path boosts Finisher selection from Visionary plus Finisher', () =>
   assert.equal(state.events.at(-1)?.playerId, finisher.id)
 })
 
-test('Defensive Command boosts Defender defensive selection', () => {
-  const leaderDefender = createPlayer(
+test('Defensive Command boosts leader goalkeeper defensive selection', () => {
+  const leaderGoalkeeper = createPlayer(
     1,
     80,
     80,
     undefined,
-    ['Defender', 'Leader'],
+    ['Defender', 'Leader', 'Goalkeeper'],
   )
   const teammate = createPlayer(2, 80)
   const rivalTeam = [createPlayer(3, 80), createPlayer(4, 80)]
   let state = initializeLiveMatch(
-    [leaderDefender, teammate],
+    [leaderGoalkeeper, teammate],
     rivalTeam,
     () => 0.99,
   )
 
-  state = advanceLiveMatch(
-    state,
-    sequenceRandom([0.99, 0.99, 0.53]),
-  )
+  state = advanceLiveMatch(state, sequenceRandom([0.99, 0.99, 0]))
 
   assert.equal(state.events.at(-1)?.type, 'defense')
-  assert.equal(state.events.at(-1)?.playerId, leaderDefender.id)
+  assert.equal(state.events.at(-1)?.playerId, leaderGoalkeeper.id)
 })
 
 test('Perfect Duo boosts Nagi and Reo goal conversion', () => {

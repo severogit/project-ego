@@ -14,6 +14,10 @@ export const KNOCKOUT_DIFFICULTY: Record<
   KnockoutPhase,
   { minimumPercentile: number; maximumPercentile: number }
 > = {
+  'knockout-round-of-16': {
+    minimumPercentile: 0.08,
+    maximumPercentile: 0.24,
+  },
   'knockout-quarter': {
     minimumPercentile: 0.2,
     maximumPercentile: 0.42,

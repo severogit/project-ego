@@ -15,6 +15,7 @@ import {
   SIMULATION_SPEED_OPTIONS,
   type SimulationSpeed,
 } from '../utils/match'
+import Icon from './Icon'
 import MatchResultPanel from './MatchResultPanel'
 
 interface LiveMatchProps {
@@ -46,13 +47,6 @@ const eventLabels = {
   defense: 'Defesa',
   'flow-activated': 'FLOW ACTIVATED',
   'flow-ended': 'FLOW ENDED',
-}
-
-const FLOW_ICON = '\u{1F525}'
-const GOAL_ICON = '\u26BD'
-
-function getGoalIcons(goals: number): string {
-  return '⚽'.repeat(goals)
 }
 
 function getEventStyle(eventType: string, side: 'player' | 'rival'): string {
@@ -288,10 +282,10 @@ function LiveMatch({
                       <span className="flex min-w-0 items-center gap-1.5">
                         {inFlow && (
                           <span
-                            className="shrink-0 animate-pulse text-sm drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+                            className="shrink-0 animate-pulse text-amber-200 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
                             aria-hidden="true"
                           >
-                            {FLOW_ICON}
+                            <Icon name="zap" className="h-3.5 w-3.5" />
                           </span>
                         )}
                         <span
@@ -305,12 +299,13 @@ function LiveMatch({
                         </span>
                         {goals > 0 && (
                           <span
-                            className="shrink-0 text-xs tracking-wider text-amber-200"
+                            className="inline-flex shrink-0 items-center gap-1 text-xs font-black tracking-wider text-amber-200"
                             aria-label={`${goals} gol${
                               goals === 1 ? '' : 's'
                             }`}
                           >
-                            {getGoalIcons(goals)}
+                            <Icon name="target" className="h-3 w-3" />
+                            {goals}
                           </span>
                         )}
                       </span>
@@ -345,10 +340,10 @@ function LiveMatch({
                       <span className="flex min-w-0 items-center gap-1.5">
                         {inFlow && (
                           <span
-                            className="shrink-0 animate-pulse text-sm drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+                            className="shrink-0 animate-pulse text-amber-200 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)]"
                             aria-hidden="true"
                           >
-                            {FLOW_ICON}
+                            <Icon name="zap" className="h-3.5 w-3.5" />
                           </span>
                         )}
                         <span
@@ -362,12 +357,13 @@ function LiveMatch({
                         </span>
                         {goals > 0 && (
                           <span
-                            className="shrink-0 text-xs tracking-wider text-amber-200"
+                            className="inline-flex shrink-0 items-center gap-1 text-xs font-black tracking-wider text-amber-200"
                             aria-label={`${goals} gol${
                               goals === 1 ? '' : 's'
                             }`}
                           >
-                            {getGoalIcons(goals)}
+                            <Icon name="target" className="h-3 w-3" />
+                            {goals}
                           </span>
                         )}
                       </span>
@@ -420,12 +416,15 @@ function LiveMatch({
                 )}
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest">
-                      {event.type === 'goal'
-                        ? `${GOAL_ICON} GOL`
-                        : event.type === 'flow-activated'
-                        ? `${FLOW_ICON} ${eventLabels[event.type]}`
-                        : eventLabels[event.type]}
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest">
+                      {event.type === 'goal' && (
+                        <Icon name="target" className="h-3.5 w-3.5" />
+                      )}
+                      {(event.type === 'flow-activated' ||
+                        event.type === 'flow-ended') && (
+                        <Icon name="zap" className="h-3.5 w-3.5" />
+                      )}
+                      {event.type === 'goal' ? 'GOL' : eventLabels[event.type]}
                     </span>
                     <span className="text-[9px] font-bold uppercase tracking-wider opacity-70">
                       {event.side === 'player' ? 'Seu time' : 'Rival'}

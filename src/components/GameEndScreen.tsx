@@ -26,10 +26,11 @@ function GameEndScreen({
           Eliminado em {MATCH_PHASE_LABELS[eliminatedAt]}
         </span>
         <h1 className="mt-3 text-4xl font-black uppercase italic tracking-tight sm:text-6xl">
-          Projeto encerrado
+          Derrota
         </h1>
-        <p className="mt-4 text-zinc-400">
-          Seu ego não sobreviveu a esta fase.
+        <p className="mx-auto mt-4 max-w-2xl text-zinc-400">
+          Seu ego ainda nao foi suficiente. Reorganize sua estrategia,
+          fortaleca seu time e tente novamente.
         </p>
       </header>
 
@@ -67,10 +68,10 @@ function GameEndScreen({
           Tentar novamente
         </button>
         <Link
-          to="/"
+          to="/game-modes"
           className="border border-zinc-700 px-7 py-4 text-center text-sm font-black uppercase tracking-[0.14em] text-zinc-300 transition hover:border-blue-500 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
         >
-          Voltar para Home
+          Voltar aos Modos
         </Link>
       </div>
     </section>
